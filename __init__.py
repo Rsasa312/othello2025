@@ -87,3 +87,12 @@ def apply_move(board, row, col, color):
             c += dc
 
 # Generation ID: Hutch_1763364959942_kj0qep3xy (後半)
+
+board = [[0,0,0,0,0,0],
+         [0,0,0,0,0,0],
+         [0,0,1,2,0,0],
+         [0,0,2,1,0,0],
+         [0,0,0,0,0,0],
+         [0,0,0,0,0,0]]
+color = 1
+myai(board, color)
