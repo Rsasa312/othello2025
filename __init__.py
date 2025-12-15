@@ -1,98 +1,155 @@
-# Generation ID: Hutch_1763364959942_kj0qep3xy (前半)
+# Generation ID: Hutch_1764575395735_jzsedj9a1 (前半)
 
 def myai(board, color):
     """
-    オセロで最も多くの石が取れる位置を返す
+    オセロAI:
+    ・角を最優先
+    ・危険マスを避ける
+    ・取れる石が最大の手を選ぶ
     """
-    size = len(board)
-    opponent = 3 - color
+    BLACK = 1
+    WHITE = 2
+    opponent = WHITE if color == BLACK else BLACK
 
-    valid_moves = []
+    best_move = None
+    best_count = -1
 
-    for row in range(size):
-        for col in range(size):
-            if board[row][col] == 0:
-                flips = count_flips(board, row, col, color, opponent)
-                if flips > 0:
-                    valid_moves.append((col, row, flips))
+    corners = [(0, 0), (0, 5), (5, 0), (5, 5)]
+    avoid = [(1, 1), (1, 4), (4, 1), (4, 4)]
 
-    if not valid_moves:
-        return None
+    for row in range(6):
+        for col in range(6):
+            if board[row][col] != 0:
+                continue
 
-    corners = [(0, 0), (0, size-1), (size-1, 0), (size-1, size-1)]
+            count = count_flips(board, row, col, color, opponent)
+            if count == 0:
+                continue
 
-    corner_moves = [m for m in valid_moves if (m[0], m[1]) in corners]
+            # 角を最優先
+            if (col, row) in corners:
+                return (col, row)
 
-    if corner_moves:
-        corner_moves.sort(key=lambda x: x[2], reverse=True)
-        return (corner_moves[0][0], corner_moves[0][1])
+            # 危険マスは避ける
+            if (col, row) in avoid:
+                continue
 
-    valid_moves.sort(key=lambda x: x[2], reverse=True)
-    return (valid_moves[0][0], valid_moves[0][1])
+            if count > best_count:
+                best_move = (col, row)
+                best_count = count
+
+    # 合法手が無い場合は None（パス）
+    return best_move
 
 
 def count_flips(board, row, col, color, opponent):
     """
-    指定位置に置いた場合に取れる石の数を数える
+    指定位置に石を置いた時に取れる石の数をカウント
     """
-    size = len(board)
-    flips = 0
+    directions = [
+        (-1, -1), (-1, 0), (-1, 1),
+        (0, -1),          (0, 1),
+        (1, -1),  (1, 0), (1, 1)
+    ]
 
-    directions = [(-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (1, 1)]
+    total_flips = 0
 
     for dr, dc in directions:
-        temp_flips = 0
         r, c = row + dr, col + dc
+        flips = 0
 
-        while 0 <= r < size and 0 <= c < size:
-            if board[r][c] == 0:
-                break
-            elif board[r][c] == opponent:
-                temp_flips += 1
-            else:
-                flips += temp_flips
-                break
-
+        while 0 <= r < 6 and 0 <= c < 6 and board[r][c] == opponent:
+            flips += 1
             r += dr
             c += dc
 
-    return flips
+        if flips > 0 and 0 <= r < 6 and 0 <= c < 6 and board[r][c] == color:
+            total_flips += flips
+
+    return total_flips
 
 
 def apply_move(board, row, col, color):
     """
-    盤面に着手を適用する
+    ボードに石を置いて、取れる石をひっくり返す
     """
-    size = len(board)
-    opponent = 3 - color
-    board[row][col] = color
+    BLACK = 1
+    WHITE = 2
+    opponent = WHITE if color == BLACK else BLACK
 
-    directions = [(-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (1, 1)]
+    directions = [
+        (-1, -1), (-1, 0), (-1, 1),
+        (0, -1),          (0, 1),
+        (1, -1),  (1, 0), (1, 1)
+    ]
+
+    new_board = [r[:] for r in board]
+    new_board[row][col] = color
 
     for dr, dc in directions:
-        temp_flips = []
         r, c = row + dr, col + dc
+        flips = []
 
-        while 0 <= r < size and 0 <= c < size:
-            if board[r][c] == 0:
-                break
-            elif board[r][c] == opponent:
-                temp_flips.append((r, c))
-            else:
-                for tr, tc in temp_flips:
-                    board[tr][tc] = color
-                break
-
+        while 0 <= r < 6 and 0 <= c < 6 and new_board[r][c] == opponent:
+            flips.append((r, c))
             r += dr
             c += dc
 
-# Generation ID: Hutch_1763364959942_kj0qep3xy (後半)
+        if flips and 0 <= r < 6 and 0 <= c < 6 and new_board[r][c] == color:
+            for fr, fc in flips:
+                new_board[fr][fc] = color
 
-board = [[0,0,0,0,0,0],
-         [0,0,0,0,0,0],
-         [0,0,1,2,0,0],
-         [0,0,2,1,0,0],
-         [0,0,0,0,0,0],
-         [0,0,0,0,0,0]]
-color = 1
-myai(board, color)
+    return new_board
+
+
+def print_board(board):
+    """
+    ボードを表示
+    """
+    for row in board:
+        print(row)
+    print()
+
+
+def play_othello():
+    """
+    オセロゲーム:
+    myai(黒) vs sakura.othello(白)
+    """
+    from sakura import othello
+
+    board = [
+        [0,0,0,0,0,0],
+        [0,0,0,0,0,0],
+        [0,0,1,2,0,0],
+        [0,0,2,1,0,0],
+        [0,0,0,0,0,0],
+        [0,0,0,0,0,0]
+    ]
+
+    BLACK = 1
+    WHITE = 2
+
+    print("ゲーム開始")
+    print_board(board)
+
+    while True:
+        # 黒のターン
+        move = myai(board, BLACK)
+        if move is not None:
+            print(f"黒の手: {move}")
+            board = apply_move(board, move[1], move[0], BLACK)
+        else:
+            print("黒はパス")
+
+        # 白のターン
+        white_move = othello.play()
+        if white_move is not None:
+            print(f"白の手: {white_move}")
+            board = apply_move(board, white_move[1], white_move[0], WHITE)
+        else:
+            print("白はパス")
+
+        print_board(board)
+
+# Generation ID: Hutch_1764575395735_jzsedj9a1 (後半)
