@@ -35,26 +35,3 @@ def myai(board, color):
                 best_count = count
 
     return best_move  # 無ければ None（パス）
-
-def count_flips(board, row, col, color, opponent):
-    directions = [
-        (-1, -1), (-1, 0), (-1, 1),
-        (0, -1),          (0, 1),
-        (1, -1),  (1, 0), (1, 1)
-    ]
-
-    total_flips = 0
-
-    for dr, dc in directions:
-        r, c = row + dr, col + dc
-        flips = 0
-
-        while 0 <= r < 6 and 0 <= c < 6 and board[r][c] == opponent:
-            flips += 1
-            r += dr
-            c += dc
-
-        if flips > 0 and 0 <= r < 6 and 0 <= c < 6 and board[r][c] == color:
-            total_flips += flips
-
-    return total_flips
