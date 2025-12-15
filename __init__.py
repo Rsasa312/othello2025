@@ -1,37 +1,60 @@
 def myai(board, color):
     """
-    sakura.othello と対戦できるオセロAI
-    返り値: (x, y) または None（パス）
+    オセロで最も多くの石が取れる位置を返す（sakura互換）
     """
-    BLACK = 1
-    WHITE = 2
-    opponent = WHITE if color == BLACK else BLACK
+    size = len(board)
+    opponent = 3 - color
 
-    best_move = None
-    best_count = -1
+    valid_moves = []
 
-    corners = [(0, 0), (0, 5), (5, 0), (5, 5)]
-    avoid = [(1, 1), (1, 4), (4, 1), (4, 4)]
+    for row in range(size):
+        for col in range(size):
+            if board[row][col] == 0:
+                flips = count_flips(board, row, col, color, opponent)
+                if flips > 0:
+                    valid_moves.append((row, col, flips))
 
-    for row in range(6):
-        for col in range(6):
-            if board[row][col] != 0:
-                continue
+    if not valid_moves:
+        return None  # パス
 
-            count = count_flips(board, row, col, color, opponent)
-            if count == 0:
-                continue
+    corners = [(0, 0), (0, size-1), (size-1, 0), (size-1, size-1)]
 
-            # 角を最優先
-            if (col, row) in corners:
-                return (col, row)
+    corner_moves = [m for m in valid_moves if (m[0], m[1]) in corners]
 
-            # 危険マスを回避
-            if (col, row) in avoid:
-                continue
+    if corner_moves:
+        corner_moves.sort(key=lambda x: x[2], reverse=True)
+        return (corner_moves[0][0], corner_moves[0][1])
 
-            if count > best_count:
-                best_move = (col, row)
-                best_count = count
+    valid_moves.sort(key=lambda x: x[2], reverse=True)
+    return (valid_moves[0][0], valid_moves[0][1])
 
-    return best_move  # 無ければ None（パス）
+
+def count_flips(board, row, col, color, opponent):
+    """
+    指定位置に置いた場合に取れる石の数を数える
+    """
+    size = len(board)
+    flips = 0
+
+    directions = [
+        (-1, -1), (-1, 0), (-1, 1),
+        (0, -1),           (0, 1),
+        (1, -1),  (1, 0),  (1, 1)
+    ]
+
+    for dr, dc in directions:
+        temp_flips = 0
+        r, c = row + dr, col + dc
+
+        while 0 <= r < size and 0 <= c < size:
+            if board[r][c] == 0:
+                break
+            elif board[r][c] == opponent:
+                temp_flips += 1
+            else:
+                flips += temp_flips
+                break
+            r += dr
+            c += dc
+
+    return flips
