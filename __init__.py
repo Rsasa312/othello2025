@@ -1,5 +1,4 @@
 import sys
-import random
 
 # 再帰の深さを増加
 sys.setrecursionlimit(2000)
@@ -13,7 +12,7 @@ WHITE = 2
 
 def myai(board, color):
     """
-    複数の候補から確率的に選ぶAI
+    最悪手AIの評価関数を使い、ミニマックスで最善を探す
     """
     opponent = 3 - color
     valid_moves = find_valid_moves(board, color, opponent)
@@ -23,16 +22,18 @@ def myai(board, color):
 
     empty_count = board_empty_count(board)
     
-    # 探索深度
+    # 探索深度（より深く）
     if empty_count <= 8:
         search_depth = empty_count
-    elif empty_count <= 14:
-        search_depth = 7
+    elif empty_count <= 12:
+        search_depth = 8
+    elif empty_count <= 18:
+        search_depth = 6
     else:
         search_depth = 5
 
-    # 各手を評価
-    move_evals = []
+    best_move = None
+    best_eval = -float('inf')
     alpha = -float('inf')
     beta = float('inf')
 
@@ -40,22 +41,14 @@ def myai(board, color):
         new_board = [row[:] for row in board]
         make_move(new_board, r, c, color, opponent)
         
-        eval_score = minimax(new_board, opponent, search_depth - 1, False, color, alpha, beta)
-        move_evals.append((r, c, eval_score))
-        alpha = max(alpha, eval_score)
+        current_eval = minimax(new_board, opponent, search_depth - 1, False, color, alpha, beta)
+        
+        if current_eval > best_eval:
+            best_eval = current_eval
+            best_move = (r, c)
+            alpha = max(alpha, current_eval)
 
-    # 評価値でソート
-    move_evals.sort(key=lambda x: x[2], reverse=True)
-    
-    # 上位30%の手からランダムに選ぶ
-    top_n = max(1, len(move_evals) // 3)
-    top_moves = move_evals[:top_n]
-    
-    # ランダムに選択（ただし最善手の確率を高くする）
-    weights = [1.0 / (i + 1) for i in range(len(top_moves))]
-    selected = random.choices(top_moves, weights=weights, k=1)[0]
-    
-    return (selected[0], selected[1])
+    return best_move
 
 # --- ミニマックス探索 ---
 
@@ -111,17 +104,14 @@ def minimax(board, current_player_color, depth, is_maximizing_player, ai_color, 
 
 def evaluate(board, color):
     """
-    バランスの取れた評価関数
+    最悪手AIで効果があった評価関数を使用
+    位置評価のみのシンプルな評価
     """
     opponent = 3 - color
     size = len(board)
     score = 0
     
-    empty_count = board_empty_count(board)
-    total = size * size
-    progress = (total - empty_count) / total
-    
-    # 位置の重み
+    # 最悪手AIと同じ重みテーブル
     weights = [
         [100, -25,  10,   5,   5,  10, -25, 100],
         [-25, -50,   1,   1,   1,   1, -50, -25],
@@ -133,32 +123,13 @@ def evaluate(board, color):
         [100, -25,  10,   5,   5,  10, -25, 100]
     ]
     
-    # 1. 位置評価
-    position_weight = 1.5 if progress < 0.6 else 0.8
+    # 位置評価のみ
     for r in range(size):
         for c in range(size):
             if board[r][c] == color:
-                score += weights[r][c] * position_weight
+                score += weights[r][c]
             elif board[r][c] == opponent:
-                score -= weights[r][c] * position_weight
-    
-    # 2. モビリティ
-    if progress < 0.8:
-        my_mobility = len(find_valid_moves(board, color, opponent))
-        opp_mobility = len(find_valid_moves(board, opponent, color))
-        
-        if my_mobility == 0 and opp_mobility > 0:
-            score -= 10000
-        elif opp_mobility == 0 and my_mobility > 0:
-            score += 10000
-        else:
-            score += (my_mobility - opp_mobility) * 20
-    
-    # 3. 石の数（終盤のみ）
-    if progress >= 0.75:
-        my_stones = sum(row.count(color) for row in board)
-        opp_stones = sum(row.count(opponent) for row in board)
-        score += (my_stones - opp_stones) * 50
+                score -= weights[r][c]
     
     return score
 
