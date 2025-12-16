@@ -74,16 +74,16 @@ def evaluate(board, color):
     size = len(board)
     opponent = 3 - color
 
-    # 角・X打ち・辺を考慮した重み
+    # 超重要：角・X打ちを強烈に評価
     WEIGHTS = [
-        [120, -40, 20,  5,  5, 20, -40, 120],
-        [-40, -80, -1, -1, -1, -1, -80, -40],
-        [ 20,  -1,  5,  1,  1,  5,  -1,  20],
-        [  5,  -1,  1,  0,  0,  1,  -1,   5],
-        [  5,  -1,  1,  0,  0,  1,  -1,   5],
-        [ 20,  -1,  5,  1,  1,  5,  -1,  20],
-        [-40, -80, -1, -1, -1, -1, -80, -40],
-        [120, -40, 20,  5,  5, 20, -40, 120]
+        [300, -150,  30,  10,  10,  30, -150, 300],
+        [-150, -250, -5,  -5,  -5,  -5, -250, -150],
+        [ 30,   -5,  15,   3,   3,  15,   -5,   30],
+        [ 10,   -5,   3,   0,   0,   3,   -5,   10],
+        [ 10,   -5,   3,   0,   0,   3,   -5,   10],
+        [ 30,   -5,  15,   3,   3,  15,   -5,   30],
+        [-150, -250, -5,  -5,  -5,  -5, -250, -150],
+        [300, -150,  30,  10,  10,  30, -150, 300]
     ]
 
     score = 0
@@ -98,22 +98,26 @@ def evaluate(board, color):
                 score -= WEIGHTS[r][c]
                 stone_diff -= 1
 
-    # モビリティ（動ける手が多い方が有利）
+    #  最重要：モビリティ
     my_moves = len(find_valid_moves(board, color, opponent))
     opp_moves = len(find_valid_moves(board, opponent, color))
-    score += (my_moves - opp_moves) * 10
+    score += (my_moves - opp_moves) * 35
 
     total_stones = size * size - board_empty_count(board)
 
-    # 終盤は石数を重視（貪欲）
-    if total_stones >= size * size * 0.7:
-        score += stone_diff * 20
+    #  中盤では石を取りすぎると負ける
+    if total_stones < size * size * 0.6:
+        score -= stone_diff * 5
 
-    # 完全終局
+    #  終盤だけ貪欲
+    else:
+        score += stone_diff * 30
+
     if board_empty_count(board) == 0:
-        return stone_diff * 1000
+        return stone_diff * 10000
 
     return score
+
 
 
 def board_empty_count(board):
