@@ -7,31 +7,25 @@ sys.setrecursionlimit(2000)
 EMPTY = 0
 BLACK = 1
 WHITE = 2
-BASE_SEARCH_DEPTH = 4  # 基本探索深度を4に増加
+SEARCH_DEPTH = 4  # 3から4に増やす
 
-# 盤面評価のための重みテーブル（序盤・中盤用）
-WEIGHTS_EARLY = [
-    [120, -20,  20,   5,   5,  20, -20, 120],
+# 盤面評価のための重みテーブル (Positional Weights)
+WEIGHTS = [
+    [100, -20,  10,   5,   5,  10, -20, 100],
     [-20, -40,  -5,  -5,  -5,  -5, -40, -20],
-    [ 20,  -5,  15,   3,   3,  15,  -5,  20],
-    [  5,  -5,   3,   3,   3,   3,  -5,   5],
-    [  5,  -5,   3,   3,   3,   3,  -5,   5],
-    [ 20,  -5,  15,   3,   3,  15,  -5,  20],
+    [ 10,  -5,   5,   3,   3,   5,  -5,  10],
+    [  5,  -5,   3,   1,   1,   3,  -5,   5],
+    [  5,  -5,   3,   1,   1,   3,  -5,   5],
+    [ 10,  -5,   5,   3,   3,   5,  -5,  10],
     [-20, -40,  -5,  -5,  -5,  -5, -40, -20],
-    [120, -20,  20,   5,   5,  20, -20, 120]
+    [100, -20,  10,   5,   5,  10, -20, 100]
 ]
-
-# 終盤用の重みテーブル（石の数が重要）
-def get_weights_late(size):
-    weights = [[10] * size for _ in range(size)]
-    weights[0][0] = weights[0][size-1] = weights[size-1][0] = weights[size-1][size-1] = 100
-    return weights
 
 # --- AIのエントリポイント ---
 
 def myai(board, color):
     """
-    オセロAIのエントリポイント
+    オセロAIのエントリポイント。
     """
     opponent = 3 - color
     
@@ -40,77 +34,27 @@ def myai(board, color):
     if not valid_moves:
         return None
 
+    # 終盤は探索を深くする
     empty_count = board_empty_count(board)
-    
-    # 動的な探索深度
-    if empty_count <= 10:
-        search_depth = min(empty_count, 10)  # 完全読み切り
-    elif empty_count <= 16:
-        search_depth = 6
-    elif empty_count <= 25:
-        search_depth = 5
+    if empty_count <= 12:
+        search_depth = min(empty_count, 12)
     else:
-        search_depth = BASE_SEARCH_DEPTH
-
-    # 手を評価値でソート（良さそうな手を先に探索）
-    valid_moves = sort_moves(board, valid_moves, color, opponent, empty_count)
+        search_depth = SEARCH_DEPTH
 
     best_move = None
     best_eval = -float('inf')
-    alpha = -float('inf')
-    beta = float('inf')
 
     for r, c, flips in valid_moves:
         new_board = [row[:] for row in board]
         make_move(new_board, r, c, color, opponent)
         
-        current_eval = minimax(new_board, opponent, search_depth - 1, False, color, alpha, beta)
+        current_eval = minimax(new_board, opponent, search_depth - 1, False, color)
         
         if current_eval > best_eval:
             best_eval = current_eval
             best_move = (r, c)
-            alpha = max(alpha, current_eval)
 
     return best_move
-
-def sort_moves(board, moves, color, opponent, empty_count):
-    """
-    手を優先順位でソート（良い手を先に探索してα-β枝刈りの効率を上げる）
-    """
-    size = len(board)
-    
-    def move_priority(move):
-        r, c, flips = move
-        priority = 0
-        
-        # 角は最優先
-        if (r == 0 or r == size-1) and (c == 0 or c == size-1):
-            priority += 10000
-        
-        # 辺は優先（ただし角の隣のX位置を除く）
-        elif (r == 0 or r == size-1 or c == 0 or c == size-1):
-            # X位置（角の斜め隣）は避ける
-            if not is_x_square(r, c, size):
-                priority += 1000
-            else:
-                priority -= 5000  # X位置は避ける
-        
-        # X位置は避ける
-        elif is_x_square(r, c, size):
-            priority -= 5000
-        
-        # 取れる石が多い手を優先（中盤以降）
-        if empty_count < 40:
-            priority += flips * 10
-        
-        return priority
-    
-    return sorted(moves, key=move_priority, reverse=True)
-
-def is_x_square(r, c, size):
-    """X位置（角の斜め隣）かどうかをチェック"""
-    x_squares = [(1, 1), (1, size-2), (size-2, 1), (size-2, size-2)]
-    return (r, c) in x_squares
 
 # --- ミニマックス探索 ---
 
@@ -130,22 +74,11 @@ def minimax(board, current_player_color, depth, is_maximizing_player, ai_color, 
         
         if not opponent_moves:
             # ゲーム終了
-            my_count = count_stones(board, ai_color)
-            opp_count = count_stones(board, 3 - ai_color)
-            if my_count > opp_count:
-                return 100000
-            elif my_count < opp_count:
-                return -100000
-            else:
-                return 0
+            return evaluate_final(board, ai_color)
         
         # パス
         return minimax(board, opponent_color, depth - 1, not is_maximizing_player, ai_color, alpha, beta)
-    
-    # 手をソート（効率的な枝刈りのため）
-    empty_count = board_empty_count(board)
-    valid_moves = sort_moves(board, valid_moves, current_player_color, opponent_color, empty_count)
-    
+            
     if is_maximizing_player:
         max_eval = -float('inf')
         for r, c, flips in valid_moves:
@@ -175,143 +108,58 @@ def minimax(board, current_player_color, depth, is_maximizing_player, ai_color, 
 
 def evaluate(board, color):
     """
-    シンプルだが効果的な評価関数
+    現在の盤面を評価し、colorにとっての点数を返す。
     """
     opponent = 3 - color
     size = len(board)
     score = 0
-    
-    empty_count = board_empty_count(board)
-    total_stones = size * size - empty_count
-    game_phase = total_stones / (size * size)
-    
-    # 使用する重みテーブルを選択
-    if game_phase < 0.75:
-        weights = WEIGHTS_EARLY
-    else:
-        weights = get_weights_late(size)
-    
-    # 1. 位置評価
-    position_score = 0
-    my_stones = 0
-    opp_stones = 0
-    
+
+    # 1. 位置の重み
     for r in range(size):
         for c in range(size):
             if board[r][c] == color:
-                position_score += weights[r][c]
-                my_stones += 1
+                score += WEIGHTS[r][c]
             elif board[r][c] == opponent:
-                position_score -= weights[r][c]
-                opp_stones += 1
+                score -= WEIGHTS[r][c]
     
-    score += position_score
+    # 2. モビリティ（着手可能数）
+    my_mobility = len(find_valid_moves(board, color, opponent))
+    opponent_mobility = len(find_valid_moves(board, opponent, color))
     
-    # 2. モビリティ（序盤・中盤で重要）
-    if game_phase < 0.8:
-        my_mobility = len(find_valid_moves(board, color, opponent))
-        opp_mobility = len(find_valid_moves(board, opponent, color))
-        
-        # モビリティが0の場合は大きなペナルティ
-        if my_mobility == 0 and opp_mobility > 0:
-            score -= 5000
-        elif opp_mobility == 0 and my_mobility > 0:
-            score += 5000
-        else:
-            mobility_diff = my_mobility - opp_mobility
-            score += mobility_diff * 30
-    
-    # 3. 石の差（終盤で重要）
-    if game_phase >= 0.75:
-        stone_diff = my_stones - opp_stones
-        score += stone_diff * 100
-    
-    # 4. 角の確保ボーナス
-    corners = [(0, 0), (0, size-1), (size-1, 0), (size-1, size-1)]
-    for r, c in corners:
-        if board[r][c] == color:
-            score += 500
-        elif board[r][c] == opponent:
-            score -= 500
-    
-    # 5. 確定石（角から連結している辺の石）
-    stable_diff = count_edge_stable_stones(board, color) - count_edge_stable_stones(board, opponent)
-    score += stable_diff * 80
-    
+    # モビリティが0は致命的
+    if my_mobility == 0 and opponent_mobility > 0:
+        score -= 10000
+    elif opponent_mobility == 0 and my_mobility > 0:
+        score += 10000
+    else:
+        mobility_diff = my_mobility - opponent_mobility
+        score += mobility_diff * 20
+
+    # 3. 終盤では石の数も考慮
+    empty_count = board_empty_count(board)
+    if empty_count <= 15:
+        my_stones = sum(row.count(color) for row in board)
+        opp_stones = sum(row.count(opponent) for row in board)
+        score += (my_stones - opp_stones) * 50
+
     return score
 
-def count_edge_stable_stones(board, color):
+def evaluate_final(board, color):
     """
-    角から辺に沿って安定している石をカウント
+    ゲーム終了時の評価（石の差のみ）
     """
-    size = len(board)
-    count = 0
+    opponent = 3 - color
+    my_stones = sum(row.count(color) for row in board)
+    opp_stones = sum(row.count(opponent) for row in board)
     
-    # 上辺
-    if board[0][0] == color:
-        for c in range(1, size):
-            if board[0][c] == color:
-                count += 1
-            else:
-                break
+    stone_diff = my_stones - opp_stones
     
-    if board[0][size-1] == color:
-        for c in range(size-2, -1, -1):
-            if board[0][c] == color:
-                count += 1
-            else:
-                break
-    
-    # 下辺
-    if board[size-1][0] == color:
-        for c in range(1, size):
-            if board[size-1][c] == color:
-                count += 1
-            else:
-                break
-    
-    if board[size-1][size-1] == color:
-        for c in range(size-2, -1, -1):
-            if board[size-1][c] == color:
-                count += 1
-            else:
-                break
-    
-    # 左辺
-    if board[0][0] == color:
-        for r in range(1, size):
-            if board[r][0] == color:
-                count += 1
-            else:
-                break
-    
-    if board[size-1][0] == color:
-        for r in range(size-2, -1, -1):
-            if board[r][0] == color:
-                count += 1
-            else:
-                break
-    
-    # 右辺
-    if board[0][size-1] == color:
-        for r in range(1, size):
-            if board[r][size-1] == color:
-                count += 1
-            else:
-                break
-    
-    if board[size-1][size-1] == color:
-        for r in range(size-2, -1, -1):
-            if board[r][size-1] == color:
-                count += 1
-            else:
-                break
-    
-    return count
-
-def count_stones(board, color):
-    """指定色の石の数を数える"""
-    return sum(row.count(color) for row in board)
+    if stone_diff > 0:
+        return 100000 + stone_diff
+    elif stone_diff < 0:
+        return -100000 + stone_diff
+    else:
+        return 0
 
 # --- ルール関連のヘルパー関数 ---
 
@@ -320,7 +168,9 @@ def board_empty_count(board):
     return sum(row.count(EMPTY) for row in board)
 
 def find_valid_moves(board, color, opponent):
-    """有効な手を全てリストアップ"""
+    """
+    現在の盤面における有効な手を全てリストアップする。
+    """
     size = len(board)
     valid_moves = []
     for row in range(size):
@@ -332,7 +182,9 @@ def find_valid_moves(board, color, opponent):
     return valid_moves
 
 def count_flips(board, row, col, color, opponent):
-    """指定位置に置いた場合に取れる石の数を数える"""
+    """
+    指定位置に置いた場合に取れる石の数を数える。
+    """
     size = len(board)
     flips = 0
 
@@ -360,7 +212,9 @@ def count_flips(board, row, col, color, opponent):
     return flips
 
 def make_move(board, row, col, color, opponent):
-    """石を打ち、裏返す操作を行う"""
+    """
+    指定の位置に石を打ち、裏返す操作を行う。
+    """
     size = len(board)
     board[row][col] = color
     
