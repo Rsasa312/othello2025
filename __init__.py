@@ -1,18 +1,24 @@
 import sys
+sys.setrecursionlimit(5000)
 
-sys.setrecursionlimit(2000)
-
+BOARD_SIZE = 8
+EMPTY, BLACK, WHITE = 0, 1, 2
 WEIGHTS = [
-    [ 50, -8,  5,  5,  5,  5, -8, 50],
-    [ -8, -8,  1,  1,  1,  1, -8, -8],
-    [  5,  1,  2,  2,  2,  2,  1,  5],
-    [  5,  1,  2,  0,  0,  2,  1,  5],
-    [  5,  1,  2,  0,  0,  2,  1,  5],
-    [  5,  1,  2,  2,  2,  2,  1,  5],
-    [ -8, -8,  1,  1,  1,  1, -8, -8],
-    [ 50, -8,  5,  5,  5,  5, -8, 50],
+    [ 50, -8, 5, 5, 5, 5, -8, 50],
+    [ -8, -8, 1, 1, 1, 1, -8, -8],
+    [  5,  1, 2, 2, 2, 2,  1,  5],
+    [  5,  1, 2, 0, 0, 2,  1,  5],
+    [  5,  1, 2, 0, 0, 2,  1,  5],
+    [  5,  1, 2, 2, 2, 2,  1,  5],
+    [ -8, -8, 1, 1, 1, 1, -8, -8],
+    [ 50, -8, 5, 5, 5, 5, -8, 50]
 ]
-SIZE = 8
+DIRECTIONS = [
+    (-1, -1), (-1, 0), (-1, 1),
+    (0, -1),           (0, 1),
+    (1, -1),  (1, 0),  (1, 1)
+]
+
 
 def myai(board, color):
     """
@@ -29,25 +35,28 @@ def myai(board, color):
     best_move = None
     best_eval = -float('inf')
 
-    for r, c, _ in valid_moves:
+    alpha = -float('inf')
+    beta = float('inf')
+
+    for r, c, flips in valid_moves:
         new_board = [row[:] for row in board]
         make_move(new_board, r, c, color, opponent)
         
-        current_eval = minimax(new_board, opponent, SEARCH_DEPTH - 1, False, color)
+        current_eval = minimax(new_board, opponent, SEARCH_DEPTH - 1, False, color, alpha, beta)
         
         if current_eval > best_eval:
             best_eval = current_eval
             best_move = (r, c)
         
-        elif current_eval == best_eval:
-             pass 
-
+        alpha = max(alpha, current_eval)
+        if alpha >= beta:
+            break
+            
     return best_move
 
-def minimax(board, current_player_color, depth, is_maximizing_player, ai_color):
+def minimax(board, current_player_color, depth, is_maximizing_player, ai_color, alpha, beta):
     """
-    ミニマックス探索を行い、現在の局面の最善の評価値を返す。
-    α-β枝刈りは実装せず、元のシンプルなミニマックスを維持する。
+    ミニマックス探索（アルファベータ枝刈り付き）
     """
     opponent_color = 3 - current_player_color
 
@@ -60,93 +69,101 @@ def minimax(board, current_player_color, depth, is_maximizing_player, ai_color):
         opponent_moves = find_valid_moves(board, opponent_color, current_player_color)
         
         if not opponent_moves:
-            return evaluate(board, ai_color) * 1000000 
+            return evaluate(board, ai_color) * 1000000
         
-        return minimax(board, opponent_color, depth, not is_maximizing_player, ai_color)
+        return minimax(board, opponent_color, depth, not is_maximizing_player, ai_color, alpha, beta)
             
     if is_maximizing_player:
         max_eval = -float('inf')
-        for r, c, _ in valid_moves:
+        for r, c, flips in valid_moves:
             new_board = [row[:] for row in board]
             make_move(new_board, r, c, current_player_color, opponent_color)
             
-            eval = minimax(new_board, opponent_color, depth - 1, False, ai_color)
+            eval = minimax(new_board, opponent_color, depth - 1, False, ai_color, alpha, beta)
             max_eval = max(max_eval, eval)
+            
+            alpha = max(alpha, eval)
+            if alpha >= beta:
+                break 
         return max_eval
-    
-    else:
+    else: # is_minimizing_player
         min_eval = float('inf')
-        for r, c, _ in valid_moves:
+        for r, c, flips in valid_moves:
             new_board = [row[:] for row in board]
             make_move(new_board, r, c, current_player_color, opponent_color)
             
-            eval = minimax(new_board, opponent_color, depth - 1, True, ai_color)
+            eval = minimax(new_board, opponent_color, depth - 1, True, ai_color, alpha, beta)
             min_eval = min(min_eval, eval)
+            
+            beta = min(beta, eval)
+            if alpha >= beta:
+                break
         return min_eval
+
 
 def evaluate(board, color):
     """
     現在の盤面を評価し、colorにとっての点数を返す。
-    強化要素：
-    1. 位置の重み
-    2. 確定石
-    3. モビリティ（着手可能数の差）
-    4. フロンティア（相手と接する石の数）
-    5. 石数（終盤重視）
+    強化された評価関数: 位置の重み、モビリティ、確定石、フロンティアの4要素を考慮。
     """
     opponent = 3 - color
     score = 0
-    empty_count = board_empty_count(board)
-    total_stones = SIZE * SIZE - empty_count
+    total_stones = 64 - board_empty_count(board)
 
-    if empty_count == 0 or (
-        not find_valid_moves(board, color, opponent) and 
-        not find_valid_moves(board, opponent, color)
-    ):
-        stone_count_diff = sum(row.count(color) for row in board) - sum(row.count(opponent) for row in board)
-        return stone_count_diff * 1000000 
-
-    stone_count_diff = 0
-    frontier_count = 0
-    
-    for r in range(SIZE):
-        for c in range(SIZE):
+    position_score = 0
+    for r in range(BOARD_SIZE):
+        for c in range(BOARD_SIZE):
             if board[r][c] == color:
-                score += WEIGHTS[r][c]
-                stone_count_diff += 1
-                if is_frontier(board, r, c, opponent):
-                    frontier_count += 1
+                position_score += WEIGHTS[r][c]
             elif board[r][c] == opponent:
-                score -= WEIGHTS[r][c]
+                position_score -= WEIGHTS[r][c]
+    
+    my_stable = find_stable_stones(board, color)
+    op_stable = find_stable_stones(board, opponent)
+    stable_diff = my_stable - op_stable
+    
+    stable_score = stable_diff * 30 
+    
+    my_mobility = len(find_valid_moves(board, color, opponent))
+    op_mobility = len(find_valid_moves(board, opponent, color))
+    
+    mobility_diff = my_mobility - op_mobility
+    
+    mobility_score = mobility_diff * 10
+    
+    my_frontier = count_frontier_stones(board, color)
+    op_frontier = count_frontier_stones(board, opponent)
+    
+    frontier_diff = op_frontier - my_frontier
+    
+    frontier_score = frontier_diff * 5
+    
+    stone_count_diff = 0
+    for r in range(BOARD_SIZE):
+        for c in range(BOARD_SIZE):
+            if board[r][c] == color:
+                stone_count_diff += 1
+            elif board[r][c] == opponent:
                 stone_count_diff -= 1
-    
 
-    my_stable_count, opp_stable_count = count_stable_stones(board, color, opponent)
-    score += (my_stable_count - opp_stable_count) * 80
+    disk_score = 0
+    if total_stones >= 64 - 20:
+        disk_score = stone_count_diff * 100
+        
+    if total_stones == 64:
+        return stone_count_diff * 1000000
 
-    my_moves = len(find_valid_moves(board, color, opponent))
-    opp_moves = len(find_valid_moves(board, opponent, color))
-    
-    mobility_score = (my_moves - opp_moves) * 40
-    score += mobility_score
-
-    score -= frontier_count * 10 
-
-    if total_stones >= SIZE * SIZE * 0.7:
-        score += stone_count_diff * 15
-    elif total_stones < SIZE * SIZE * 0.3:
-        score += stone_count_diff * 5
-    else:
-        score += stone_count_diff * 10
+    score = position_score + mobility_score + stable_score + frontier_score + disk_score
 
     return score
+
 
 
 def board_empty_count(board):
     """盤面上の空きマスの数を数えるヘルパー関数"""
     count = 0
     for row in board:
-        count += row.count(0)
+        count += row.count(EMPTY)
     return count
 
 def find_valid_moves(board, color, opponent):
@@ -154,32 +171,25 @@ def find_valid_moves(board, color, opponent):
     現在の盤面における有効な手を全てリストアップする。
     """
     valid_moves = []
-    for row in range(SIZE):
-        for col in range(SIZE):
-            if board[row][col] == 0:
+    for row in range(BOARD_SIZE):
+        for col in range(BOARD_SIZE):
+            if board[row][col] == EMPTY:
                 flips = count_flips(board, row, col, color, opponent)
                 if flips > 0:
-                    valid_moves.append((row, col, flips))
+                    valid_moves.append((row, col, flips)) 
     return valid_moves
-
 
 def count_flips(board, row, col, color, opponent):
     """
     指定位置に置いた場合に取れる石の数を数える。
     """
     flips = 0
-    directions = [
-        (-1, -1), (-1, 0), (-1, 1),
-        (0, -1),            (0, 1),
-        (1, -1),  (1, 0),  (1, 1)
-    ]
-
-    for dr, dc in directions:
+    for dr, dc in DIRECTIONS:
         temp_flips = 0
         r, c = row + dr, col + dc
 
-        while 0 <= r < SIZE and 0 <= c < SIZE:
-            if board[r][c] == 0:
+        while 0 <= r < BOARD_SIZE and 0 <= c < BOARD_SIZE:
+            if board[r][c] == EMPTY:
                 break
             elif board[r][c] == opponent:
                 temp_flips += 1
@@ -188,9 +198,7 @@ def count_flips(board, row, col, color, opponent):
                 break
             r += dr
             c += dc
-
     return flips
-
 
 def make_move(board, row, col, color, opponent):
     """
@@ -198,18 +206,12 @@ def make_move(board, row, col, color, opponent):
     """
     board[row][col] = color
     
-    directions = [
-        (-1, -1), (-1, 0), (-1, 1),
-        (0, -1),            (0, 1),
-        (1, -1),  (1, 0),  (1, 1)
-    ]
-
-    for dr, dc in directions:
+    for dr, dc in DIRECTIONS:
         temp_flips_coords = []
         r, c = row + dr, col + dc
 
-        while 0 <= r < SIZE and 0 <= c < SIZE:
-            if board[r][c] == 0:
+        while 0 <= r < BOARD_SIZE and 0 <= c < BOARD_SIZE:
+            if board[r][c] == EMPTY:
                 break
             elif board[r][c] == opponent:
                 temp_flips_coords.append((r, c))
@@ -221,70 +223,48 @@ def make_move(board, row, col, color, opponent):
             c += dc
 
 
-def is_in_board(r, c):
-    """座標が盤面内にあるか判定"""
-    return 0 <= r < SIZE and 0 <= c < SIZE
+def count_frontier_stones(board, color):
+    """
+    フロンティア（相手に隣接している自分の石）の数を数える。
+    """
+    frontier_count = 0
+    for r in range(BOARD_SIZE):
+        for c in range(BOARD_SIZE):
+            if board[r][c] == color:
+                for dr, dc in DIRECTIONS:
+                    nr, nc = r + dr, c + dc
+                    if 0 <= nr < BOARD_SIZE and 0 <= nc < BOARD_SIZE and board[nr][nc] == EMPTY:
+                        frontier_count += 1
+                        break
+    return frontier_count
 
-def is_frontier(board, r, c, opponent):
+def find_stable_stones(board, color):
     """
-    指定の座標 (r, c) の石が相手の石と隣接しているか（フロンティア石か）を判定
+    確定石（安定石）の数を数える。
+    この実装では、よりシンプルな「四隅からの探索」で確定石を検出します。
     """
-    directions = [
-        (-1, -1), (-1, 0), (-1, 1),
-        (0, -1),            (0, 1),
-        (1, -1),  (1, 0),  (1, 1)
-    ]
-    for dr, dc in directions:
-        nr, nc = r + dr, c + dc
-        if is_in_board(nr, nc) and board[nr][nc] == 0:
-             return True
-    return False
-
-def count_stable_stones(board, color, opponent):
-    """
-    確定石 (stable stones) の数を数える。
-    これは計算負荷が高いが、評価の質を上げるために導入する。
-    確定石とは、どの方向からも裏返されない石のこと。
-    ここでは、4隅から確定していく比較的シンプルな判定ロジックを用いる。
-    
-    """
-    stable_counts = {color: 0, opponent: 0}
-    visited = [[False] * SIZE for _ in range(SIZE)]
+    stable_count = 0
+    is_stable = [[False] * BOARD_SIZE for _ in range(BOARD_SIZE)]
     
     corners = [(0, 0), (0, 7), (7, 0), (7, 7)]
+    for r, c in corners:
+        if board[r][c] == color and not is_stable[r][c]:
+            queue = [(r, c)]
+            is_stable[r][c] = True
+            
+            while queue:
+                cr, cc = queue.pop(0)
+                stable_count += 1
+                                
+                for dr, dc in DIRECTIONS:
+                    nr, nc = cr + dr, cc + dc
+                    if 0 <= nr < BOARD_SIZE and 0 <= nc < BOARD_SIZE and \
+                       board[nr][nc] == color and not is_stable[nr][nc]:
+                        
+                        
+                        is_stable[nr][nc] = True
+                        queue.append((nr, nc))
     
-    for start_r, start_c in corners:
-        if board[start_r][start_c] != 0:
-            target_color = board[start_r][start_c]
-            
-            
-            if not visited[start_r][start_c]:
-                stable_counts[target_color] += 1
-                visited[start_r][start_c] = True
-            
-            dr, dc = (0, 1) if start_c == 0 else (0, -1)
-            r, c = start_r, start_c + dc
-            while is_in_board(r, c) and board[r][c] == target_color:
-                if not visited[r][c]:
-                    is_surrounded = True 
-                    if start_r == 0 or start_r == 7:
-                         pass
-                    
-                    if is_surrounded:
-                        stable_counts[target_color] += 1
-                        visited[r][c] = True
-                r += dr
-                c += dc
-            
-            dr, dc = (1, 0) if start_r == 0 else (-1, 0)
-            r, c = start_r + dr, start_c
-            while is_in_board(r, c) and board[r][c] == target_color:
-                if not visited[r][c]:
-                    is_surrounded = True
-                    if is_surrounded:
-                        stable_counts[target_color] += 1
-                        visited[r][c] = True
-                r += dr
-                c += dc
 
-    return stable_counts[color], stable_counts[opponent]
+    
+    return stable_count
