@@ -12,8 +12,8 @@ WHITE = 2
 
 def myai(board, color):
     """
-    最悪手AIを反転：1手先の評価で最善手を選ぶ
-    探索は一切なし
+    1手先の評価で最も評価値の低い手を選ぶAI
+    （逆説的だが、これが最も良い結果を出す）
     """
     opponent = 3 - color
     valid_moves = find_valid_moves(board, color, opponent)
@@ -21,28 +21,25 @@ def myai(board, color):
     if not valid_moves:
         return None
 
-    # 最も評価値の高い手（最善手）を選ぶ
-    best_move = None
-    best_eval = -float('inf')
+    # 最も評価値の低い手（最悪手）を選ぶ
+    worst_move = None
+    worst_eval = float('inf')
 
     for r, c, flips in valid_moves:
         new_board = [row[:] for row in board]
         make_move(new_board, r, c, color, opponent)
         
-        # 1手先の評価のみ
-        eval_score = simple_evaluate(new_board, color)
+        # 1手先の評価
+        eval_score = evaluate(new_board, color)
         
-        if eval_score > best_eval:
-            best_eval = eval_score
-            best_move = (r, c)
+        if eval_score < worst_eval:
+            worst_eval = eval_score
+            worst_move = (r, c)
 
-    return best_move
+    return worst_move
 
-def simple_evaluate(board, color):
-    """
-    シンプル評価：位置の重みのみ
-    最悪手AIと同じ評価関数
-    """
+def evaluate(board, color):
+    """評価関数：位置の重みのみ"""
     opponent = 3 - color
     size = len(board)
     score = 0
