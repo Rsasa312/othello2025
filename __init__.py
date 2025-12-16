@@ -19,7 +19,7 @@ def myai(board, color):
         empties = board_empty_count(b)
 
         if empties <= 10:
-            val = exact_search(b, opponent, color)
+            val = exact_minimax(b, opponent, color)
         else:
             val = minimax(b, opponent, DEPTH-1, False, color)
 
@@ -30,25 +30,33 @@ def myai(board, color):
     return best_move
 
 
-# ---------------- 終盤完全探索 ----------------
+# ---------- 終盤完全探索（安全版） ----------
 
-def exact_search(board, current, ai_color):
+def exact_minimax(board, current, ai_color):
     opponent = 3 - current
+
     moves = find_valid_moves(board, current, opponent)
 
     if not moves:
         opp_moves = find_valid_moves(board, opponent, current)
         if not opp_moves:
             return final_score(board, ai_color)
-        return -exact_search(board, opponent, ai_color)
+        return exact_minimax(board, opponent, ai_color)
 
-    best = -10**9
-    for r, c, _ in moves:
-        b = [row[:] for row in board]
-        make_move(b, r, c, current, opponent)
-        val = -exact_search(b, opponent, ai_color)
-        best = max(best, val)
-    return best
+    if current == ai_color:
+        best = -10**9
+        for r, c, _ in moves:
+            b = [row[:] for row in board]
+            make_move(b, r, c, current, opponent)
+            best = max(best, exact_minimax(b, opponent, ai_color))
+        return best
+    else:
+        best = 10**9
+        for r, c, _ in moves:
+            b = [row[:] for row in board]
+            make_move(b, r, c, current, opponent)
+            best = min(best, exact_minimax(b, opponent, ai_color))
+        return best
 
 
 def final_score(board, color):
@@ -62,31 +70,33 @@ def final_score(board, color):
     return diff * 1000
 
 
-# ---------------- 中盤用 ----------------
+# ---------- 中盤探索 ----------
 
 def minimax(board, current, depth, is_max, ai_color):
     opponent = 3 - current
+
     if depth == 0:
         return evaluate(board, ai_color)
 
     moves = find_valid_moves(board, current, opponent)
+
     if not moves:
         return minimax(board, opponent, depth, not is_max, ai_color)
 
     if is_max:
-        v = -10**9
+        best = -10**9
         for r, c, _ in moves:
             b = [row[:] for row in board]
             make_move(b, r, c, current, opponent)
-            v = max(v, minimax(b, opponent, depth-1, False, ai_color))
-        return v
+            best = max(best, minimax(b, opponent, depth-1, False, ai_color))
+        return best
     else:
-        v = 10**9
+        best = 10**9
         for r, c, _ in moves:
             b = [row[:] for row in board]
             make_move(b, r, c, current, opponent)
-            v = min(v, minimax(b, opponent, depth-1, True, ai_color))
-        return v
+            best = min(best, minimax(b, opponent, depth-1, True, ai_color))
+        return best
 
 
 def evaluate(board, color):
@@ -101,7 +111,7 @@ def evaluate(board, color):
     return score
 
 
-# ---------- 以下ユーティリティ（変更なし） ----------
+# ---------- ユーティリティ（元コード互換） ----------
 
 def board_empty_count(board):
     return sum(row.count(0) for row in board)
