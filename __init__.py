@@ -12,8 +12,7 @@ WHITE = 2
 
 def myai(board, color):
     """
-    1手先の位置評価で最も評価値の低い手を選ぶAI
-    逆説的だが、この対戦環境では最も効果的
+    相手より深く読み、相手と異なる評価基準を使う
     """
     opponent = 3 - color
     valid_moves = find_valid_moves(board, color, opponent)
@@ -21,28 +20,100 @@ def myai(board, color):
     if not valid_moves:
         return None
 
-    # 最も評価値の低い手を選ぶ
-    worst_move = None
-    worst_eval = float('inf')
+    empty_count = board_empty_count(board)
+    
+    # 探索深度を相手（2手）より深く
+    if empty_count <= 8:
+        search_depth = empty_count
+    elif empty_count <= 14:
+        search_depth = 8
+    elif empty_count <= 22:
+        search_depth = 6
+    else:
+        search_depth = 5
+
+    best_move = None
+    best_eval = -float('inf')
+    alpha = -float('inf')
+    beta = float('inf')
 
     for r, c, flips in valid_moves:
         new_board = [row[:] for row in board]
         make_move(new_board, r, c, color, opponent)
         
-        eval_score = evaluate(new_board, color)
+        current_eval = minimax(new_board, opponent, search_depth - 1, False, color, alpha, beta)
         
-        if eval_score < worst_eval:
-            worst_eval = eval_score
-            worst_move = (r, c)
+        if current_eval > best_eval:
+            best_eval = current_eval
+            best_move = (r, c)
+            alpha = max(alpha, current_eval)
 
-    return worst_move
+    return best_move
+
+# --- ミニマックス探索 ---
+
+def minimax(board, current_player_color, depth, is_maximizing_player, ai_color, alpha, beta):
+    """ミニマックス探索"""
+    opponent_color = 3 - current_player_color
+
+    if depth == 0:
+        return evaluate(board, ai_color)
+    
+    valid_moves = find_valid_moves(board, current_player_color, opponent_color)
+
+    if not valid_moves:
+        opponent_moves = find_valid_moves(board, opponent_color, current_player_color)
+        
+        if not opponent_moves:
+            my_stones = sum(row.count(ai_color) for row in board)
+            opp_stones = sum(row.count(3 - ai_color) for row in board)
+            return (my_stones - opp_stones) * 10000
+        
+        return minimax(board, opponent_color, depth - 1, not is_maximizing_player, ai_color, alpha, beta)
+    
+    if is_maximizing_player:
+        max_eval = -float('inf')
+        for r, c, flips in valid_moves:
+            new_board = [row[:] for row in board]
+            make_move(new_board, r, c, current_player_color, opponent_color)
+            
+            eval = minimax(new_board, opponent_color, depth - 1, False, ai_color, alpha, beta)
+            max_eval = max(max_eval, eval)
+            alpha = max(alpha, eval)
+            if beta <= alpha:
+                break
+        return max_eval
+    else:
+        min_eval = float('inf')
+        for r, c, flips in valid_moves:
+            new_board = [row[:] for row in board]
+            make_move(new_board, r, c, current_player_color, opponent_color)
+            
+            eval = minimax(new_board, opponent_color, depth - 1, True, ai_color, alpha, beta)
+            min_eval = min(min_eval, eval)
+            beta = min(beta, eval)
+            if beta <= alpha:
+                break
+        return min_eval
+
+# --- 評価関数 ---
 
 def evaluate(board, color):
-    """位置評価のみのシンプルな評価関数"""
+    """
+    相手と異なる評価基準：
+    - 序盤：位置評価を反転（中央を重視）
+    - 中盤：モビリティ重視
+    - 終盤：石の数重視
+    """
     opponent = 3 - color
     size = len(board)
     score = 0
     
+    empty_count = board_empty_count(board)
+    total = size * size
+    game_progress = (total - empty_count) / total
+    
+    # 基本の位置評価
     weights = [
         [100, -25,  10,   5,   5,  10, -25, 100],
         [-25, -50,   1,   1,   1,   1, -50, -25],
@@ -54,12 +125,43 @@ def evaluate(board, color):
         [100, -25,  10,   5,   5,  10, -25, 100]
     ]
     
+    # 1. 位置評価（序盤は反転、終盤は通常）
+    if game_progress < 0.5:
+        # 序盤：位置評価を反転（最悪手戦略）
+        position_multiplier = -0.5
+    elif game_progress < 0.75:
+        # 中盤：位置評価は控えめ
+        position_multiplier = 0.3
+    else:
+        # 終盤：位置評価を重視
+        position_multiplier = 1.5
+    
     for r in range(size):
         for c in range(size):
             if board[r][c] == color:
-                score += weights[r][c]
+                score += weights[r][c] * position_multiplier
             elif board[r][c] == opponent:
-                score -= weights[r][c]
+                score -= weights[r][c] * position_multiplier
+    
+    # 2. モビリティ（序盤・中盤で重要）
+    if game_progress < 0.8:
+        my_mobility = len(find_valid_moves(board, color, opponent))
+        opp_mobility = len(find_valid_moves(board, opponent, color))
+        
+        if my_mobility == 0 and opp_mobility > 0:
+            score -= 50000
+        elif opp_mobility == 0 and my_mobility > 0:
+            score += 50000
+        else:
+            mobility_weight = 50 if game_progress < 0.6 else 30
+            score += (my_mobility - opp_mobility) * mobility_weight
+    
+    # 3. 石の数（終盤で重要）
+    if game_progress >= 0.7:
+        my_stones = sum(row.count(color) for row in board)
+        opp_stones = sum(row.count(opponent) for row in board)
+        stone_weight = 20 if game_progress < 0.85 else 100
+        score += (my_stones - opp_stones) * stone_weight
     
     return score
 
