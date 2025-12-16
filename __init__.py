@@ -12,7 +12,7 @@ WHITE = 2
 
 def myai(board, color):
     """
-    最悪手AIの評価関数を使い、ミニマックスで最善を探す
+    最悪手AIの改良版：浅い探索のみ
     """
     opponent = 3 - color
     valid_moves = find_valid_moves(board, color, opponent)
@@ -22,31 +22,29 @@ def myai(board, color):
 
     empty_count = board_empty_count(board)
     
-    # 探索深度（より深く）
+    # 終盤以外は探索を浅く（1-2手のみ）
     if empty_count <= 8:
-        search_depth = empty_count
-    elif empty_count <= 12:
-        search_depth = 8
-    elif empty_count <= 18:
-        search_depth = 6
+        search_depth = min(empty_count, 10)
     else:
-        search_depth = 5
+        search_depth = 2  # 浅い探索
 
     best_move = None
     best_eval = -float('inf')
-    alpha = -float('inf')
-    beta = float('inf')
 
     for r, c, flips in valid_moves:
         new_board = [row[:] for row in board]
         make_move(new_board, r, c, color, opponent)
         
-        current_eval = minimax(new_board, opponent, search_depth - 1, False, color, alpha, beta)
+        if search_depth == 0:
+            # 探索なし（最悪手AIと同じ）
+            current_eval = evaluate(new_board, color)
+        else:
+            # 浅い探索
+            current_eval = minimax(new_board, opponent, search_depth - 1, False, color, -float('inf'), float('inf'))
         
         if current_eval > best_eval:
             best_eval = current_eval
             best_move = (r, c)
-            alpha = max(alpha, current_eval)
 
     return best_move
 
@@ -54,7 +52,7 @@ def myai(board, color):
 
 def minimax(board, current_player_color, depth, is_maximizing_player, ai_color, alpha, beta):
     """
-    ミニマックス探索（アルファベータ枝刈り付き）
+    浅いミニマックス探索
     """
     opponent_color = 3 - current_player_color
 
@@ -67,12 +65,10 @@ def minimax(board, current_player_color, depth, is_maximizing_player, ai_color, 
         opponent_moves = find_valid_moves(board, opponent_color, current_player_color)
         
         if not opponent_moves:
-            # ゲーム終了
             my_stones = sum(row.count(ai_color) for row in board)
             opp_stones = sum(row.count(3 - ai_color) for row in board)
             return (my_stones - opp_stones) * 10000
         
-        # パス
         return minimax(board, opponent_color, depth - 1, not is_maximizing_player, ai_color, alpha, beta)
     
     if is_maximizing_player:
@@ -104,14 +100,12 @@ def minimax(board, current_player_color, depth, is_maximizing_player, ai_color, 
 
 def evaluate(board, color):
     """
-    最悪手AIで効果があった評価関数を使用
-    位置評価のみのシンプルな評価
+    最悪手AIと同じ評価関数
     """
     opponent = 3 - color
     size = len(board)
     score = 0
     
-    # 最悪手AIと同じ重みテーブル
     weights = [
         [100, -25,  10,   5,   5,  10, -25, 100],
         [-25, -50,   1,   1,   1,   1, -50, -25],
@@ -123,7 +117,6 @@ def evaluate(board, color):
         [100, -25,  10,   5,   5,  10, -25, 100]
     ]
     
-    # 位置評価のみ
     for r in range(size):
         for c in range(size):
             if board[r][c] == color:
