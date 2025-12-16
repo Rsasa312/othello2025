@@ -12,8 +12,8 @@ WHITE = 2
 
 def myai(board, color):
     """
-    序盤・中盤：位置評価の低い手を選ぶ（最悪手戦略）
-    終盤：位置評価の高い手を選ぶ（通常戦略）
+    1手先の位置評価で最も評価値の低い手を選ぶAI
+    逆説的だが、この対戦環境では最も効果的
     """
     opponent = 3 - color
     valid_moves = find_valid_moves(board, color, opponent)
@@ -21,100 +21,24 @@ def myai(board, color):
     if not valid_moves:
         return None
 
-    empty_count = board_empty_count(board)
-    
-    # 終盤（残り12手以下）は通常戦略、それ以外は最悪手戦略
-    use_normal_strategy = (empty_count <= 12)
+    # 最も評価値の低い手を選ぶ
+    worst_move = None
+    worst_eval = float('inf')
 
-    if use_normal_strategy:
-        # 終盤：ミニマックスで最善手を探す
-        search_depth = min(empty_count, 10)
+    for r, c, flips in valid_moves:
+        new_board = [row[:] for row in board]
+        make_move(new_board, r, c, color, opponent)
         
-        best_move = None
-        best_eval = -float('inf')
-        alpha = -float('inf')
-        beta = float('inf')
-
-        for r, c, flips in valid_moves:
-            new_board = [row[:] for row in board]
-            make_move(new_board, r, c, color, opponent)
-            
-            current_eval = minimax(new_board, opponent, search_depth - 1, False, color, alpha, beta)
-            
-            if current_eval > best_eval:
-                best_eval = current_eval
-                best_move = (r, c)
-                alpha = max(alpha, current_eval)
+        eval_score = evaluate(new_board, color)
         
-        return best_move
-    else:
-        # 序盤・中盤：最悪手を選ぶ
-        worst_move = None
-        worst_eval = float('inf')
+        if eval_score < worst_eval:
+            worst_eval = eval_score
+            worst_move = (r, c)
 
-        for r, c, flips in valid_moves:
-            new_board = [row[:] for row in board]
-            make_move(new_board, r, c, color, opponent)
-            
-            eval_score = evaluate(new_board, color)
-            
-            if eval_score < worst_eval:
-                worst_eval = eval_score
-                worst_move = (r, c)
-
-        return worst_move
-
-# --- ミニマックス探索（終盤用）---
-
-def minimax(board, current_player_color, depth, is_maximizing_player, ai_color, alpha, beta):
-    """ミニマックス探索"""
-    opponent_color = 3 - current_player_color
-
-    if depth == 0:
-        return evaluate(board, ai_color)
-    
-    valid_moves = find_valid_moves(board, current_player_color, opponent_color)
-
-    if not valid_moves:
-        opponent_moves = find_valid_moves(board, opponent_color, current_player_color)
-        
-        if not opponent_moves:
-            # ゲーム終了
-            my_stones = sum(row.count(ai_color) for row in board)
-            opp_stones = sum(row.count(3 - ai_color) for row in board)
-            return (my_stones - opp_stones) * 10000
-        
-        return minimax(board, opponent_color, depth - 1, not is_maximizing_player, ai_color, alpha, beta)
-    
-    if is_maximizing_player:
-        max_eval = -float('inf')
-        for r, c, flips in valid_moves:
-            new_board = [row[:] for row in board]
-            make_move(new_board, r, c, current_player_color, opponent_color)
-            
-            eval = minimax(new_board, opponent_color, depth - 1, False, ai_color, alpha, beta)
-            max_eval = max(max_eval, eval)
-            alpha = max(alpha, eval)
-            if beta <= alpha:
-                break
-        return max_eval
-    else:
-        min_eval = float('inf')
-        for r, c, flips in valid_moves:
-            new_board = [row[:] for row in board]
-            make_move(new_board, r, c, current_player_color, opponent_color)
-            
-            eval = minimax(new_board, opponent_color, depth - 1, True, ai_color, alpha, beta)
-            min_eval = min(min_eval, eval)
-            beta = min(beta, eval)
-            if beta <= alpha:
-                break
-        return min_eval
-
-# --- 評価関数 ---
+    return worst_move
 
 def evaluate(board, color):
-    """位置評価"""
+    """位置評価のみのシンプルな評価関数"""
     opponent = 3 - color
     size = len(board)
     score = 0
