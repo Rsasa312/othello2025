@@ -1,166 +1,109 @@
-import sys
-sys.setrecursionlimit(10000)
+import copy
+
+# 8方向
+DIRS = [(-1,-1),(-1,0),(-1,1),(0,-1),(0,1),(1,-1),(1,0),(1,1)]
+
+def inside(x, y):
+    return 0 <= x < 8 and 0 <= y < 8
+
+def opponent(c):
+    return -c
+
+def valid_moves(board, color):
+    moves = []
+    for x in range(8):
+        for y in range(8):
+            if board[x][y] != 0:
+                continue
+            for dx, dy in DIRS:
+                nx, ny = x+dx, y+dy
+                found = False
+                while inside(nx, ny) and board[nx][ny] == opponent(color):
+                    found = True
+                    nx += dx
+                    ny += dy
+                if found and inside(nx, ny) and board[nx][ny] == color:
+                    moves.append((x, y))
+                    break
+    return moves
+
+def apply_move(board, move, color):
+    x, y = move
+    newb = copy.deepcopy(board)
+    newb[x][y] = color
+    for dx, dy in DIRS:
+        nx, ny = x+dx, y+dy
+        flips = []
+        while inside(nx, ny) and newb[nx][ny] == opponent(color):
+            flips.append((nx, ny))
+            nx += dx
+            ny += dy
+        if flips and inside(nx, ny) and newb[nx][ny] == color:
+            for fx, fy in flips:
+                newb[fx][fy] = color
+    return newb
+
+def count_stones(board, color):
+    return sum(board[x][y] == color for x in range(8) for y in range(8))
+
+def evaluate(board, color):
+    score = 0
+
+    # 石数（貪欲）
+    score += 2 * (count_stones(board, color) - count_stones(board, opponent(color)))
+
+    # 角
+    corners = [(0,0),(0,7),(7,0),(7,7)]
+    for x, y in corners:
+        if board[x][y] == color:
+            score += 50
+        elif board[x][y] == opponent(color):
+            score -= 50
+
+    # 行動可能数（相手を減らす）
+    score += len(valid_moves(board, color))
+    score -= len(valid_moves(board, opponent(color)))
+
+    return score
+
+def minimax(board, color, depth, maximizing):
+    moves = valid_moves(board, color)
+    if depth == 0 or not moves:
+        return evaluate(board, color)
+
+    if maximizing:
+        best = -10**9
+        for m in moves:
+            b2 = apply_move(board, m, color)
+            val = minimax(b2, opponent(color), depth-1, False)
+            best = max(best, val)
+        return best
+    else:
+        worst = 10**9
+        for m in moves:
+            b2 = apply_move(board, m, color)
+            val = minimax(b2, opponent(color), depth-1, True)
+            worst = min(worst, val)
+        return worst
 
 def myai(board, color):
-    opponent = 3 - color
-    DEPTH = 3
-
-    moves = find_valid_moves(board, color, opponent)
+    moves = valid_moves(board, color)
     if not moves:
         return None
 
-    best_val = -10**9
-    best_move = None
+    # 角があれば即取る
+    for m in moves:
+        if m in [(0,0),(0,7),(7,0),(7,7)]:
+            return m
 
-    for r, c, _ in moves:
-        b = [row[:] for row in board]
-        make_move(b, r, c, color, opponent)
+    best_move = moves[0]
+    best_score = -10**9
 
-        empties = board_empty_count(b)
-
-        if empties <= 10:
-            val = exact_minimax(b, opponent, color)
-        else:
-            val = minimax(b, opponent, DEPTH-1, False, color)
-
-        if val > best_val:
-            best_val = val
-            best_move = (r, c)
+    for m in moves:
+        b2 = apply_move(board, m, color)
+        score = minimax(b2, opponent(color), 2, False)  # 合計3手先
+        if score > best_score:
+            best_score = score
+            best_move = m
 
     return best_move
-
-
-# ---------- 終盤完全探索（安全版） ----------
-
-def exact_minimax(board, current, ai_color):
-    opponent = 3 - current
-
-    moves = find_valid_moves(board, current, opponent)
-
-    if not moves:
-        opp_moves = find_valid_moves(board, opponent, current)
-        if not opp_moves:
-            return final_score(board, ai_color)
-        return exact_minimax(board, opponent, ai_color)
-
-    if current == ai_color:
-        best = -10**9
-        for r, c, _ in moves:
-            b = [row[:] for row in board]
-            make_move(b, r, c, current, opponent)
-            best = max(best, exact_minimax(b, opponent, ai_color))
-        return best
-    else:
-        best = 10**9
-        for r, c, _ in moves:
-            b = [row[:] for row in board]
-            make_move(b, r, c, current, opponent)
-            best = min(best, exact_minimax(b, opponent, ai_color))
-        return best
-
-
-def final_score(board, color):
-    diff = 0
-    for row in board:
-        for x in row:
-            if x == color:
-                diff += 1
-            elif x == 3 - color:
-                diff -= 1
-    return diff * 1000
-
-
-# ---------- 中盤探索 ----------
-
-def minimax(board, current, depth, is_max, ai_color):
-    opponent = 3 - current
-
-    if depth == 0:
-        return evaluate(board, ai_color)
-
-    moves = find_valid_moves(board, current, opponent)
-
-    if not moves:
-        return minimax(board, opponent, depth, not is_max, ai_color)
-
-    if is_max:
-        best = -10**9
-        for r, c, _ in moves:
-            b = [row[:] for row in board]
-            make_move(b, r, c, current, opponent)
-            best = max(best, minimax(b, opponent, depth-1, False, ai_color))
-        return best
-    else:
-        best = 10**9
-        for r, c, _ in moves:
-            b = [row[:] for row in board]
-            make_move(b, r, c, current, opponent)
-            best = min(best, minimax(b, opponent, depth-1, True, ai_color))
-        return best
-
-
-def evaluate(board, color):
-    opponent = 3 - color
-    score = 0
-    for r in range(8):
-        for c in range(8):
-            if board[r][c] == color:
-                score += 1
-            elif board[r][c] == opponent:
-                score -= 1
-    return score
-
-
-# ---------- ユーティリティ（元コード互換） ----------
-
-def board_empty_count(board):
-    return sum(row.count(0) for row in board)
-
-def find_valid_moves(board, color, opponent):
-    size = len(board)
-    res = []
-    for r in range(size):
-        for c in range(size):
-            if board[r][c] == 0:
-                f = count_flips(board, r, c, color, opponent)
-                if f > 0:
-                    res.append((r, c, f))
-    return res
-
-def count_flips(board, row, col, color, opponent):
-    size = len(board)
-    flips = 0
-    dirs = [(-1,-1),(-1,0),(-1,1),(0,-1),(0,1),(1,-1),(1,0),(1,1)]
-    for dr, dc in dirs:
-        r, c = row+dr, col+dc
-        temp = 0
-        while 0 <= r < size and 0 <= c < size:
-            if board[r][c] == opponent:
-                temp += 1
-            elif board[r][c] == color:
-                flips += temp
-                break
-            else:
-                break
-            r += dr
-            c += dc
-    return flips
-
-def make_move(board, row, col, color, opponent):
-    size = len(board)
-    board[row][col] = color
-    dirs = [(-1,-1),(-1,0),(-1,1),(0,-1),(0,1),(1,-1),(1,0),(1,1)]
-    for dr, dc in dirs:
-        r, c = row+dr, col+dc
-        temp = []
-        while 0 <= r < size and 0 <= c < size:
-            if board[r][c] == opponent:
-                temp.append((r,c))
-            elif board[r][c] == color:
-                for tr, tc in temp:
-                    board[tr][tc] = color
-                break
-            else:
-                break
-            r += dr
-            c += dc
