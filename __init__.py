@@ -12,7 +12,8 @@ WHITE = 2
 
 def myai(board, color):
     """
-    オセロAIのエントリポイント
+    テスト用：意図的に最悪手を選ぶAI
+    これで結果が変わるかを確認
     """
     opponent = 3 - color
     valid_moves = find_valid_moves(board, color, opponent)
@@ -20,96 +21,29 @@ def myai(board, color):
     if not valid_moves:
         return None
 
-    # 探索深度
-    empty_count = board_empty_count(board)
-    
-    if empty_count <= 8:
-        search_depth = empty_count
-    elif empty_count <= 14:
-        search_depth = 8
-    else:
-        search_depth = 6
-
-    best_move = None
-    best_eval = -float('inf')
-    alpha = -float('inf')
-    beta = float('inf')
+    # 最も評価値の低い手（最悪手）を選ぶ
+    worst_move = None
+    worst_eval = float('inf')
 
     for r, c, flips in valid_moves:
         new_board = [row[:] for row in board]
         make_move(new_board, r, c, color, opponent)
         
-        current_eval = minimax(new_board, opponent, search_depth - 1, False, color, alpha, beta)
+        # 簡易評価（低いほど悪い）
+        eval_score = simple_evaluate(new_board, color)
         
-        if current_eval > best_eval:
-            best_eval = current_eval
-            best_move = (r, c)
-            alpha = max(alpha, current_eval)
+        if eval_score < worst_eval:
+            worst_eval = eval_score
+            worst_move = (r, c)
 
-    return best_move
+    return worst_move
 
-# --- ミニマックス探索 ---
-
-def minimax(board, current_player_color, depth, is_maximizing_player, ai_color, alpha=-float('inf'), beta=float('inf')):
-    """
-    ミニマックス探索（アルファベータ枝刈り付き）
-    """
-    opponent_color = 3 - current_player_color
-
-    if depth == 0:
-        return evaluate(board, ai_color)
-    
-    valid_moves = find_valid_moves(board, current_player_color, opponent_color)
-
-    if not valid_moves:
-        opponent_moves = find_valid_moves(board, opponent_color, current_player_color)
-        
-        if not opponent_moves:
-            # ゲーム終了
-            my_stones = sum(row.count(ai_color) for row in board)
-            opp_stones = sum(row.count(3 - ai_color) for row in board)
-            return (my_stones - opp_stones) * 10000
-        
-        # パス
-        return minimax(board, opponent_color, depth - 1, not is_maximizing_player, ai_color, alpha, beta)
-    
-    if is_maximizing_player:
-        max_eval = -float('inf')
-        for r, c, flips in valid_moves:
-            new_board = [row[:] for row in board]
-            make_move(new_board, r, c, current_player_color, opponent_color)
-            
-            eval = minimax(new_board, opponent_color, depth - 1, False, ai_color, alpha, beta)
-            max_eval = max(max_eval, eval)
-            alpha = max(alpha, eval)
-            if beta <= alpha:
-                break
-        return max_eval
-    else:
-        min_eval = float('inf')
-        for r, c, flips in valid_moves:
-            new_board = [row[:] for row in board]
-            make_move(new_board, r, c, current_player_color, opponent_color)
-            
-            eval = minimax(new_board, opponent_color, depth - 1, True, ai_color, alpha, beta)
-            min_eval = min(min_eval, eval)
-            beta = min(beta, eval)
-            if beta <= alpha:
-                break
-        return min_eval
-
-# --- 評価関数 ---
-
-def evaluate(board, color):
-    """
-    極めてシンプルな評価関数
-    角 > モビリティ > 位置 の順で評価
-    """
+def simple_evaluate(board, color):
+    """簡易評価：位置の重みのみ"""
     opponent = 3 - color
     size = len(board)
     score = 0
     
-    # 重みテーブル（角とX位置に特化）
     weights = [
         [100, -25,  10,   5,   5,  10, -25, 100],
         [-25, -50,   1,   1,   1,   1, -50, -25],
@@ -121,28 +55,12 @@ def evaluate(board, color):
         [100, -25,  10,   5,   5,  10, -25, 100]
     ]
     
-    # 位置評価
     for r in range(size):
         for c in range(size):
             if board[r][c] == color:
                 score += weights[r][c]
             elif board[r][c] == opponent:
                 score -= weights[r][c]
-    
-    # モビリティ（最重要）
-    my_moves = find_valid_moves(board, color, opponent)
-    opp_moves = find_valid_moves(board, opponent, color)
-    
-    my_mobility = len(my_moves)
-    opp_mobility = len(opp_moves)
-    
-    # モビリティが0なら大幅減点
-    if my_mobility == 0 and opp_mobility > 0:
-        score -= 10000
-    elif opp_mobility == 0 and my_mobility > 0:
-        score += 10000
-    else:
-        score += (my_mobility - opp_mobility) * 10
     
     return score
 
