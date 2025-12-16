@@ -1,109 +1,193 @@
-import copy
+import sys
 
-# 8方向
-DIRS = [(-1,-1),(-1,0),(-1,1),(0,-1),(0,1),(1,-1),(1,0),(1,1)]
+sys.setrecursionlimit(2000)
 
-def inside(x, y):
-    return 0 <= x < 8 and 0 <= y < 8
+def myai(board, color):
+    """
+    オセロAIのエントリポイント。3手先を読んで最善の手を返す（sakura互換）
+    """
+    opponent = 3 - color
+    SEARCH_DEPTH = 3 
 
-def opponent(c):
-    return -c
+    valid_moves = find_valid_moves(board, color, opponent) 
+    
+    if not valid_moves:
+        return None
 
-def valid_moves(board, color):
-    moves = []
-    for x in range(8):
-        for y in range(8):
-            if board[x][y] != 0:
-                continue
-            for dx, dy in DIRS:
-                nx, ny = x+dx, y+dy
-                found = False
-                while inside(nx, ny) and board[nx][ny] == opponent(color):
-                    found = True
-                    nx += dx
-                    ny += dy
-                if found and inside(nx, ny) and board[nx][ny] == color:
-                    moves.append((x, y))
-                    break
-    return moves
+    best_move = None
+    best_eval = -float('inf')
 
-def apply_move(board, move, color):
-    x, y = move
-    newb = copy.deepcopy(board)
-    newb[x][y] = color
-    for dx, dy in DIRS:
-        nx, ny = x+dx, y+dy
-        flips = []
-        while inside(nx, ny) and newb[nx][ny] == opponent(color):
-            flips.append((nx, ny))
-            nx += dx
-            ny += dy
-        if flips and inside(nx, ny) and newb[nx][ny] == color:
-            for fx, fy in flips:
-                newb[fx][fy] = color
-    return newb
+    for r, c, flips in valid_moves:
+        new_board = [row[:] for row in board]
+        make_move(new_board, r, c, color, opponent)
+        
+        current_eval = minimax(new_board, opponent, SEARCH_DEPTH - 1, False, color)
+        
+        if current_eval > best_eval:
+            best_eval = current_eval
+            best_move = (r, c)
+        
+        elif current_eval == best_eval and best_move is not None:
+             pass 
 
-def count_stones(board, color):
-    return sum(board[x][y] == color for x in range(8) for y in range(8))
+    return best_move
+
+def minimax(board, current_player_color, depth, is_maximizing_player, ai_color):
+    """
+    ミニマックス探索を行い、現在の局面の最善の評価値を返す。
+    """
+    opponent_color = 3 - current_player_color
+
+    if depth == 0:
+        return evaluate(board, ai_color)
+    
+    valid_moves = find_valid_moves(board, current_player_color, opponent_color)
+
+    if not valid_moves:
+        opponent_moves = find_valid_moves(board, opponent_color, current_player_color)
+        
+        if not opponent_moves:
+            return evaluate(board, ai_color) * 1000 
+        
+        return minimax(board, opponent_color, depth - 1, not is_maximizing_player, ai_color)
+            
+    if is_maximizing_player:
+        max_eval = -float('inf')
+        for r, c, flips in valid_moves:
+            new_board = [row[:] for row in board]
+            make_move(new_board, r, c, current_player_color, opponent_color)
+            
+            eval = minimax(new_board, opponent_color, depth - 1, False, ai_color)
+            max_eval = max(max_eval, eval)
+        return max_eval
+    else:
+        min_eval = float('inf')
+        for r, c, flips in valid_moves:
+            new_board = [row[:] for row in board]
+            make_move(new_board, r, c, current_player_color, opponent_color)
+            
+            eval = minimax(new_board, opponent_color, depth - 1, True, ai_color)
+            min_eval = min(min_eval, eval)
+        return min_eval
 
 def evaluate(board, color):
+    """
+    現在の盤面を評価し、colorにとっての点数を返す。
+    """
+    size = len(board)
+    opponent = 3 - color
     score = 0
+    
+    WEIGHTS = [
+        [ 50, -8,  5,  5,  5,  5, -8, 50],
+        [ -8, -8,  1,  1,  1,  1, -8, -8],
+        [  5,  1,  2,  2,  2,  2,  1,  5],
+        [  5,  1,  2,  0,  0,  2,  1,  5],
+        [  5,  1,  2,  0,  0,  2,  1,  5],
+        [  5,  1,  2,  2,  2,  2,  1,  5],
+        [ -8, -8,  1,  1,  1,  1, -8, -8],
+        [ 50, -8,  5,  5,  5,  5, -8, 50]
+    ]
 
-    # 石数（貪欲）
-    score += 2 * (count_stones(board, color) - count_stones(board, opponent(color)))
+    stone_count_diff = 0
+    for r in range(size):
+        for c in range(size):
+            if board[r][c] == color:
+                score += WEIGHTS[r][c]
+                stone_count_diff += 1
+            elif board[r][c] == opponent:
+                score -= WEIGHTS[r][c]
+                stone_count_diff -= 1
+    
+    total_stones = size * size - board_empty_count(board)
+    if total_stones >= size * size * 0.7:
+         score += stone_count_diff * 10 
 
-    # 角
-    corners = [(0,0),(0,7),(7,0),(7,7)]
-    for x, y in corners:
-        if board[x][y] == color:
-            score += 50
-        elif board[x][y] == opponent(color):
-            score -= 50
-
-    # 行動可能数（相手を減らす）
-    score += len(valid_moves(board, color))
-    score -= len(valid_moves(board, opponent(color)))
+    if board_empty_count(board) == 0:
+        return stone_count_diff * 1000
 
     return score
 
-def minimax(board, color, depth, maximizing):
-    moves = valid_moves(board, color)
-    if depth == 0 or not moves:
-        return evaluate(board, color)
 
-    if maximizing:
-        best = -10**9
-        for m in moves:
-            b2 = apply_move(board, m, color)
-            val = minimax(b2, opponent(color), depth-1, False)
-            best = max(best, val)
-        return best
-    else:
-        worst = 10**9
-        for m in moves:
-            b2 = apply_move(board, m, color)
-            val = minimax(b2, opponent(color), depth-1, True)
-            worst = min(worst, val)
-        return worst
+def board_empty_count(board):
+    """盤面上の空きマスの数を数えるヘルパー関数"""
+    count = 0
+    for row in board:
+        count += row.count(0)
+    return count
 
-def myai(board, color):
-    moves = valid_moves(board, color)
-    if not moves:
-        return None
+def find_valid_moves(board, color, opponent):
+    """
+    現在の盤面における有効な手を全てリストアップする。
+    """
+    size = len(board)
+    valid_moves = []
+    for row in range(size):
+        for col in range(size):
+            if board[row][col] == 0:
+                flips = count_flips(board, row, col, color, opponent)
+                if flips > 0:
+                    valid_moves.append((row, col, flips))
+    return valid_moves
 
-    # 角があれば即取る
-    for m in moves:
-        if m in [(0,0),(0,7),(7,0),(7,7)]:
-            return m
 
-    best_move = moves[0]
-    best_score = -10**9
+def count_flips(board, row, col, color, opponent):
+    """
+    指定位置に置いた場合に取れる石の数を数える。
+    """
+    size = len(board)
+    flips = 0
 
-    for m in moves:
-        b2 = apply_move(board, m, color)
-        score = minimax(b2, opponent(color), 2, False)  # 合計3手先
-        if score > best_score:
-            best_score = score
-            best_move = m
+    directions = [
+        (-1, -1), (-1, 0), (-1, 1),
+        (0, -1),            (0, 1),
+        (1, -1),  (1, 0),  (1, 1)
+    ]
 
-    return best_move
+    for dr, dc in directions:
+        temp_flips = 0
+        r, c = row + dr, col + dc
+
+        while 0 <= r < size and 0 <= c < size:
+            if board[r][c] == 0:
+                break
+            elif board[r][c] == opponent:
+                temp_flips += 1
+            else: # board[r][c] == color
+                flips += temp_flips
+                break
+            r += dr
+            c += dc
+
+    return flips
+
+
+def make_move(board, row, col, color, opponent):
+    """
+    指定の位置に石を打ち、裏返す操作を行う（ボードを直接変更する）。
+    ミニマックス探索中のシミュレーションに使用。
+    """
+    size = len(board)
+    board[row][col] = color
+    
+    directions = [
+        (-1, -1), (-1, 0), (-1, 1),
+        (0, -1),            (0, 1),
+        (1, -1),  (1, 0),  (1, 1)
+    ]
+
+    for dr, dc in directions:
+        temp_flips_coords = []
+        r, c = row + dr, col + dc
+
+        while 0 <= r < size and 0 <= c < size:
+            if board[r][c] == 0:
+                break
+            elif board[r][c] == opponent:
+                temp_flips_coords.append((r, c))
+            else: # board[r][c] == color
+                for fr, fc in temp_flips_coords:
+                    board[fr][fc] = color
+                break
+            r += dr
+            c += dc
