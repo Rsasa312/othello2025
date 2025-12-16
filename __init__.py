@@ -22,16 +22,10 @@ WEIGHTS_EARLY = [
 ]
 
 # 終盤用の重みテーブル（石の数が重要）
-WEIGHTS_LATE = [
-    [100,  10,  10,  10,  10,  10,  10, 100],
-    [ 10,  10,  10,  10,  10,  10,  10,  10],
-    [ 10,  10,  10,  10,  10,  10,  10,  10],
-    [ 10,  10,  10,  10,  10,  10,  10,  10],
-    [ 10,  10,  10,  10,  10,  10,  10,  10],
-    [ 10,  10,  10,  10,  10,  10,  10,  10],
-    [ 10,  10,  10,  10,  10,  10,  10,  10],
-    [100,  10,  10,  10,  10,  10,  10, 100]
-]
+def get_weights_late(size):
+    weights = [[10] * size for _ in range(size)]
+    weights[0][0] = weights[0][size-1] = weights[size-1][0] = weights[size-1][size-1] = 100
+    return weights
 
 # --- AIのエントリポイント ---
 
@@ -83,24 +77,26 @@ def sort_moves(board, moves, color, opponent, empty_count):
     """
     手を優先順位でソート（良い手を先に探索してα-β枝刈りの効率を上げる）
     """
+    size = len(board)
+    
     def move_priority(move):
         r, c, flips = move
         priority = 0
         
         # 角は最優先
-        if (r == 0 or r == 7) and (c == 0 or c == 7):
+        if (r == 0 or r == size-1) and (c == 0 or c == size-1):
             priority += 10000
         
         # 辺は優先（ただし角の隣のX位置を除く）
-        elif (r == 0 or r == 7 or c == 0 or c == 7):
+        elif (r == 0 or r == size-1 or c == 0 or c == size-1):
             # X位置（角の斜め隣）は避ける
-            if not is_x_square(r, c):
+            if not is_x_square(r, c, size):
                 priority += 1000
             else:
                 priority -= 5000  # X位置は避ける
         
         # X位置は避ける
-        elif is_x_square(r, c):
+        elif is_x_square(r, c, size):
             priority -= 5000
         
         # 取れる石が多い手を優先（中盤以降）
@@ -111,9 +107,9 @@ def sort_moves(board, moves, color, opponent, empty_count):
     
     return sorted(moves, key=move_priority, reverse=True)
 
-def is_x_square(r, c):
+def is_x_square(r, c, size):
     """X位置（角の斜め隣）かどうかをチェック"""
-    x_squares = [(1, 1), (1, 6), (6, 1), (6, 6)]
+    x_squares = [(1, 1), (1, size-2), (size-2, 1), (size-2, size-2)]
     return (r, c) in x_squares
 
 # --- ミニマックス探索 ---
@@ -193,7 +189,7 @@ def evaluate(board, color):
     if game_phase < 0.75:
         weights = WEIGHTS_EARLY
     else:
-        weights = WEIGHTS_LATE
+        weights = get_weights_late(size)
     
     # 1. 位置評価
     position_score = 0
@@ -231,7 +227,7 @@ def evaluate(board, color):
         score += stone_diff * 100
     
     # 4. 角の確保ボーナス
-    corners = [(0, 0), (0, 7), (7, 0), (7, 7)]
+    corners = [(0, 0), (0, size-1), (size-1, 0), (size-1, size-1)]
     for r, c in corners:
         if board[r][c] == color:
             score += 500
