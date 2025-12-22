@@ -1,65 +1,118 @@
-# Generation ID: Hutch_1763365873709_9229idond (前半)
-
+import sys
+# 再帰の深さを増加
+sys.setrecursionlimit(2000)
+# --- 定数定義 ---
+EMPTY = 0
+BLACK = 1
+WHITE = 2
+# --- AIのエントリポイント ---
 def myai(board, color):
-    """
-    オセロの最適な手を返す関数
-    """
-    def is_valid_move(board, row, col, color):
-        if board[row][col] != 0:
-            return False
-        
-        opponent = 3 - color
-        directions = [(-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (1, 1)]
-        
-        for dr, dc in directions:
-            r, c = row + dr, col + dc
-            found_opponent = False
-            
-            while 0 <= r < len(board) and 0 <= c < len(board[0]):
-                if board[r][c] == opponent:
-                    found_opponent = True
-                elif board[r][c] == color:
-                    if found_opponent:
-                        return True
-                else:
-                    break
-                r += dr
-                c += dc
-        
-        return False
-    
-    def get_valid_moves(board, color):
-        moves = []
-        for i in range(len(board)):
-            for j in range(len(board[0])):
-                if is_valid_move(board, i, j, color):
-                    moves.append((i, j))
-        return moves
-    
-    def count_pieces(board, color):
-        return sum(row.count(color) for row in board)
-    
-    def evaluate_position(board, color, row, col):
-        corners = [(0, 0), (0, len(board[0]) - 1), (len(board) - 1, 0), (len(board) - 1, len(board[0]) - 1)]
-        edges = [(0, j) for j in range(len(board[0]))] + \
-                [(len(board) - 1, j) for j in range(len(board[0]))] + \
-                [(i, 0) for i in range(len(board))] + \
-                [(i, len(board[0]) - 1) for i in range(len(board))]
-        
-        if (row, col) in corners:
-            return 100
-        elif (row, col) in edges:
-            return 10
-        else:
-            return 1
-    
-    valid_moves = get_valid_moves(board, color)
-    
-    if not valid_moves:
-        return None
-    
-    best_move = max(valid_moves, key=lambda move: evaluate_position(board, color, move[0], move[1]))
-    
-    return best_move
-
-# Generation ID: Hutch_1763365873709_9229idond (後半)
+    """
+    1手先の位置評価で最も評価値の低い手を選ぶAI
+    逆説的だが、この対戦環境では最も効果的
+    """
+    opponent = 3 - color
+    valid_moves = find_valid_moves(board, color, opponent)
+    
+    if not valid_moves:
+        return None
+    # 最も評価値の低い手を選ぶ
+    worst_move = None
+    worst_eval = float('inf')
+    for r, c, flips in valid_moves:
+        new_board = [row[:] for row in board]
+        make_move(new_board, r, c, color, opponent)
+        
+        eval_score = evaluate(new_board, color)
+        
+        if eval_score < worst_eval:
+            worst_eval = eval_score
+            worst_move = (r, c)
+    return worst_move
+def evaluate(board, color):
+    """位置評価のみのシンプルな評価関数"""
+    opponent = 3 - color
+    size = len(board)
+    score = 0
+    
+    weights = [
+        [100, -25,  10,   5,   5,  10, -25, 100],
+        [-25, -50,   1,   1,   1,   1, -50, -25],
+        [ 10,   1,   5,   2,   2,   5,   1,  10],
+        [  5,   1,   2,   1,   1,   2,   1,   5],
+        [  5,   1,   2,   1,   1,   2,   1,   5],
+        [ 10,   1,   5,   2,   2,   5,   1,  10],
+        [-25, -50,   1,   1,   1,   1, -50, -25],
+        [100, -25,  10,   5,   5,  10, -25, 100]
+    ]
+    
+    for r in range(size):
+        for c in range(size):
+            if board[r][c] == color:
+                score += weights[r][c]
+            elif board[r][c] == opponent:
+                score -= weights[r][c]
+    
+    return score
+# --- ルール関連のヘルパー関数 ---
+def board_empty_count(board):
+    """盤面上の空きマスの数"""
+    return sum(row.count(EMPTY) for row in board)
+def find_valid_moves(board, color, opponent):
+    """有効な手を全てリストアップ"""
+    size = len(board)
+    valid_moves = []
+    for row in range(size):
+        for col in range(size):
+            if board[row][col] == EMPTY:
+                flips = count_flips(board, row, col, color, opponent)
+                if flips > 0:
+                    valid_moves.append((row, col, flips))
+    return valid_moves
+def count_flips(board, row, col, color, opponent):
+    """指定位置に置いた場合に取れる石の数"""
+    size = len(board)
+    flips = 0
+    directions = [
+        (-1, -1), (-1, 0), (-1, 1),
+        (0, -1),            (0, 1),
+        (1, -1),  (1, 0),  (1, 1)
+    ]
+    for dr, dc in directions:
+        temp_flips = 0
+        r, c = row + dr, col + dc
+        while 0 <= r < size and 0 <= c < size:
+            if board[r][c] == EMPTY:
+                break
+            elif board[r][c] == opponent:
+                temp_flips += 1
+            else:
+                flips += temp_flips
+                break
+            r += dr
+            c += dc
+    return flips
+def make_move(board, row, col, color, opponent):
+    """石を打ち、裏返す"""
+    size = len(board)
+    board[row][col] = color
+    
+    directions = [
+        (-1, -1), (-1, 0), (-1, 1),
+        (0, -1),            (0, 1),
+        (1, -1),  (1, 0),  (1, 1)
+    ]
+    for dr, dc in directions:
+        temp_flips_coords = []
+        r, c = row + dr, col + dc
+        while 0 <= r < size and 0 <= c < size:
+            if board[r][c] == EMPTY:
+                break
+            elif board[r][c] == opponent:
+                temp_flips_coords.append((r, c))
+            else:
+                for fr, fc in temp_flips_coords:
+                    board[fr][fc] = color
+                break
+            r += dr
+            c += dc
