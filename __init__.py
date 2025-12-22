@@ -1,68 +1,118 @@
+import sys
+# 再帰の深さを増加
+sys.setrecursionlimit(2000)
+# --- 定数定義 ---
+EMPTY = 0
+BLACK = 1
+WHITE = 2
+# --- AIのエントリポイント ---
 def myai(board, color):
     """
-    戦略的優先順位に基づいて着手位置を返す
+    1手先の位置評価で最も評価値の低い手を選ぶAI
+    逆説的だが、この対戦環境では最も効果的
     """
-    size = len(board)
     opponent = 3 - color
-    valid_moves = []
-
-    # 全ての打てる場所とその反転数をリスト化
-    for row in range(size):
-        for col in range(size):
-            if board[row][col] == 0:
-                flips = count_flips(board, row, col, color, opponent)
-                if flips > 0:
-                    valid_moves.append({'pos': (col, row), 'flips': flips})
-
+    valid_moves = find_valid_moves(board, color, opponent)
+    
     if not valid_moves:
         return None
-
-    corners = [(0, 0), (0, size-1), (size-1, 0), (size-1, size-1)]
+    # 最も評価値の低い手を選ぶ
+    worst_move = None
+    worst_eval = float('inf')
+    for r, c, flips in valid_moves:
+        new_board = [row[:] for row in board]
+        make_move(new_board, r, c, color, opponent)
+        
+        eval_score = evaluate(new_board, color)
+        
+        if eval_score < worst_eval:
+            worst_eval = eval_score
+            worst_move = (r, c)
+    return worst_move
+def evaluate(board, color):
+    """位置評価のみのシンプルな評価関数"""
+    opponent = 3 - color
+    size = len(board)
+    score = 0
     
-    # 角の隣接マス（C打ち・X打ち）の定義
-    # 各角に対して、その隣接する座標をマッピング
-    adj_to_corners = {
-        (0, 0): [(0, 1), (1, 0), (1, 1)],
-        (0, size-1): [(0, size-2), (1, size-1), (1, size-2)],
-        (size-1, 0): [(size-2, 0), (size-1, 1), (size-2, 1)],
-        (size-1, size-1): [(size-2, size-1), (size-1, size-2), (size-2, size-2)]
-    }
-
-    # 1. 角が取れるかチェック
-    corner_moves = [m for m in valid_moves if m['pos'] in corners]
-    if corner_moves:
-        # 最も多く取れる角を返す
-        corner_moves.sort(key=lambda x: x['flips'], reverse=True)
-        return corner_moves[0]['pos']
-
-    # 2. すでに自分が取っている角の隣をチェック
-    my_corner_adj_moves = []
-    for c_pos, adj_list in adj_to_corners.items():
-        # もしその角が自分の色なら、その隣接マスは「安全」かつ「戦略的」
-        if board[c_pos[1]][c_pos[0]] == color:
-            for m in valid_moves:
-                if m['pos'] in adj_list:
-                    my_corner_adj_moves.append(m)
+    weights = [
+        [100, -25,  10,   5,   5,  10, -25, 100],
+        [-25, -50,   1,   1,   1,   1, -50, -25],
+        [ 10,   1,   5,   2,   2,   5,   1,  10],
+        [  5,   1,   2,   1,   1,   2,   1,   5],
+        [  5,   1,   2,   1,   1,   2,   1,   5],
+        [ 10,   1,   5,   2,   2,   5,   1,  10],
+        [-25, -50,   1,   1,   1,   1, -50, -25],
+        [100, -25,  10,   5,   5,  10, -25, 100]
+    ]
     
-    if my_corner_adj_moves:
-        my_corner_adj_moves.sort(key=lambda x: x['flips'], reverse=True)
-        return my_corner_adj_moves[0]['pos']
-
-    # 3. 角が空いている場合、その隣（危険地帯）を除外したリストを作成
-    safe_moves = []
-    danger_zones = []
-    for c_pos, adj_list in adj_to_corners.items():
-        if board[c_pos[1]][c_pos[0]] == 0:  # 角が空白
-            danger_zones.extend(adj_list)
+    for r in range(size):
+        for c in range(size):
+            if board[r][c] == color:
+                score += weights[r][c]
+            elif board[r][c] == opponent:
+                score -= weights[r][c]
     
-    safe_moves = [m for m in valid_moves if m['pos'] not in danger_zones]
-
-    # 4. 最終決定
-    if safe_moves:
-        # 危険地帯以外の場所で、最も多く取れる場所
-        safe_moves.sort(key=lambda x: x['flips'], reverse=True)
-        return safe_moves[0]['pos']
-    else:
-        # どこも危険な場合（または角が全て埋まっている場合）は、全体から最大を選ぶ
-        valid_moves.sort(key=lambda x: x['flips'], reverse=True)
-        return valid_moves[0]['pos']
+    return score
+# --- ルール関連のヘルパー関数 ---
+def board_empty_count(board):
+    """盤面上の空きマスの数"""
+    return sum(row.count(EMPTY) for row in board)
+def find_valid_moves(board, color, opponent):
+    """有効な手を全てリストアップ"""
+    size = len(board)
+    valid_moves = []
+    for row in range(size):
+        for col in range(size):
+            if board[row][col] == EMPTY:
+                flips = count_flips(board, row, col, color, opponent)
+                if flips > 0:
+                    valid_moves.append((row, col, flips))
+    return valid_moves
+def count_flips(board, row, col, color, opponent):
+    """指定位置に置いた場合に取れる石の数"""
+    size = len(board)
+    flips = 0
+    directions = [
+        (-1, -1), (-1, 0), (-1, 1),
+        (0, -1),            (0, 1),
+        (1, -1),  (1, 0),  (1, 1)
+    ]
+    for dr, dc in directions:
+        temp_flips = 0
+        r, c = row + dr, col + dc
+        while 0 <= r < size and 0 <= c < size:
+            if board[r][c] == EMPTY:
+                break
+            elif board[r][c] == opponent:
+                temp_flips += 1
+            else:
+                flips += temp_flips
+                break
+            r += dr
+            c += dc
+    return flips
+def make_move(board, row, col, color, opponent):
+    """石を打ち、裏返す"""
+    size = len(board)
+    board[row][col] = color
+    
+    directions = [
+        (-1, -1), (-1, 0), (-1, 1),
+        (0, -1),            (0, 1),
+        (1, -1),  (1, 0),  (1, 1)
+    ]
+    for dr, dc in directions:
+        temp_flips_coords = []
+        r, c = row + dr, col + dc
+        while 0 <= r < size and 0 <= c < size:
+            if board[r][c] == EMPTY:
+                break
+            elif board[r][c] == opponent:
+                temp_flips_coords.append((r, c))
+            else:
+                for fr, fc in temp_flips_coords:
+                    board[fr][fc] = color
+                break
+            r += dr
+            c += dc
