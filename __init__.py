@@ -1,118 +1,111 @@
-import sys
-# 再帰の深さを増加
-sys.setrecursionlimit(2000)
-# --- 定数定義 ---
-EMPTY = 0
-BLACK = 1
-WHITE = 2
-# --- AIのエントリポイント ---
+import copy
+
 def myai(board, color):
-    """
-    1手先の位置評価で最も評価値の低い手を選ぶAI
-    逆説的だが、この対戦環境では最も効果的
-    """
-    opponent = 3 - color
-    valid_moves = find_valid_moves(board, color, opponent)
-    
-    if not valid_moves:
-        return None
-    # 最も評価値の低い手を選ぶ
-    worst_move = None
-    worst_eval = float('inf')
-    for r, c, flips in valid_moves:
-        new_board = [row[:] for row in board]
-        make_move(new_board, r, c, color, opponent)
+    # 設定：何手先まで読むか（3〜5程度が速度と強さのバランスが良い）
+    DEPTH = 4
+
+    # 1. 盤面の重み付け（静的評価マップ）
+    # 隅は高く、隅の隣(X打ち)は低く設定
+    EVAL_MAP = [
+        [100, -20, 10,  5,  5, 10, -20, 100],
+        [-20, -50, -2, -2, -2, -2, -50, -20],
+        [ 10,  -2,  1,  1,  1,  1,  -2,  10],
+        [  5,  -2,  1,  0,  0,  1,  -2,   5],
+        [  5,  -2,  1,  0,  0,  1,  -2,   5],
+        [ 10,  -2,  1,  1,  1,  1,  -2,  10],
+        [-20, -50, -2, -2, -2, -2, -50, -20],
+        [100, -20, 10,  5,  5, 10, -20, 100],
+    ]
+
+    def get_valid_moves(temp_board, temp_color):
+        moves = []
+        directions = [(-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (1, 1)]
+        opponent = 3 - temp_color
+        for r in range(8):
+            for c in range(8):
+                if temp_board[r][c] != 0: continue
+                for dr, dc in directions:
+                    nr, nc = r + dr, c + dc
+                    if 0 <= nr < 8 and 0 <= nc < 8 and temp_board[nr][nc] == opponent:
+                        while 0 <= nr < 8 and 0 <= nc < 8:
+                            if temp_board[nr][nc] == 0: break
+                            if temp_board[nr][nc] == temp_color:
+                                moves.append((r, c))
+                                break
+                            nr += dr
+                            nc += dc
+                        else: continue
+                        break
+        return list(set(moves))
+
+    def flip_stones(temp_board, move, temp_color):
+        new_board = copy.deepcopy(temp_board)
+        r, c = move
+        new_board[r][c] = temp_color
+        opponent = 3 - temp_color
+        directions = [(-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (1, 1)]
+        for dr, dc in directions:
+            path = []
+            nr, nc = r + dr, c + dc
+            while 0 <= nr < 8 and 0 <= nc < 8 and new_board[nr][nc] == opponent:
+                path.append((nr, nc))
+                nr += dr
+                nc += dc
+            if 0 <= nr < 8 and 0 <= nc < 8 and new_board[nr][nc] == temp_color:
+                for pr, pc in path:
+                    new_board[pr][pc] = temp_color
+        return new_board
+
+    def evaluate(temp_board, temp_color):
+        # 盤面の評価値を計算
+        score = 0
+        opponent = 3 - temp_color
+        for r in range(8):
+            for c in range(8):
+                if temp_board[r][c] == temp_color:
+                    score += EVAL_MAP[r][c]
+                elif temp_board[r][c] == opponent:
+                    score -= EVAL_MAP[r][c]
+        return score
+
+    def minimax(temp_board, depth, alpha, beta, is_maximizing, ai_color):
+        valid_moves = get_valid_moves(temp_board, ai_color if is_maximizing else 3 - ai_color)
         
-        eval_score = evaluate(new_board, color)
-        
-        if eval_score < worst_eval:
-            worst_eval = eval_score
-            worst_move = (r, c)
-    return worst_move
-def evaluate(board, color):
-    """位置評価のみのシンプルな評価関数"""
-    opponent = 3 - color
-    size = len(board)
-    score = 0
-    
-    weights = [
-        [100, -25,  10,   5,   5,  10, -25, 100],
-        [-25, -50,   1,   1,   1,   1, -50, -25],
-        [ 10,   1,   5,   2,   2,   5,   1,  10],
-        [  5,   1,   2,   1,   1,   2,   1,   5],
-        [  5,   1,   2,   1,   1,   2,   1,   5],
-        [ 10,   1,   5,   2,   2,   5,   1,  10],
-        [-25, -50,   1,   1,   1,   1, -50, -25],
-        [100, -25,  10,   5,   5,  10, -25, 100]
-    ]
-    
-    for r in range(size):
-        for c in range(size):
-            if board[r][c] == color:
-                score += weights[r][c]
-            elif board[r][c] == opponent:
-                score -= weights[r][c]
-    
-    return score
-# --- ルール関連のヘルパー関数 ---
-def board_empty_count(board):
-    """盤面上の空きマスの数"""
-    return sum(row.count(EMPTY) for row in board)
-def find_valid_moves(board, color, opponent):
-    """有効な手を全てリストアップ"""
-    size = len(board)
-    valid_moves = []
-    for row in range(size):
-        for col in range(size):
-            if board[row][col] == EMPTY:
-                flips = count_flips(board, row, col, color, opponent)
-                if flips > 0:
-                    valid_moves.append((row, col, flips))
-    return valid_moves
-def count_flips(board, row, col, color, opponent):
-    """指定位置に置いた場合に取れる石の数"""
-    size = len(board)
-    flips = 0
-    directions = [
-        (-1, -1), (-1, 0), (-1, 1),
-        (0, -1),            (0, 1),
-        (1, -1),  (1, 0),  (1, 1)
-    ]
-    for dr, dc in directions:
-        temp_flips = 0
-        r, c = row + dr, col + dc
-        while 0 <= r < size and 0 <= c < size:
-            if board[r][c] == EMPTY:
-                break
-            elif board[r][c] == opponent:
-                temp_flips += 1
-            else:
-                flips += temp_flips
-                break
-            r += dr
-            c += dc
-    return flips
-def make_move(board, row, col, color, opponent):
-    """石を打ち、裏返す"""
-    size = len(board)
-    board[row][col] = color
-    
-    directions = [
-        (-1, -1), (-1, 0), (-1, 1),
-        (0, -1),            (0, 1),
-        (1, -1),  (1, 0),  (1, 1)
-    ]
-    for dr, dc in directions:
-        temp_flips_coords = []
-        r, c = row + dr, col + dc
-        while 0 <= r < size and 0 <= c < size:
-            if board[r][c] == EMPTY:
-                break
-            elif board[r][c] == opponent:
-                temp_flips_coords.append((r, c))
-            else:
-                for fr, fc in temp_flips_coords:
-                    board[fr][fc] = color
-                break
-            r += dr
-            c += dc
+        if depth == 0 or not valid_moves:
+            return evaluate(temp_board, ai_color)
+
+        if is_maximizing:
+            max_eval = float('-inf')
+            for move in valid_moves:
+                new_board = flip_stones(temp_board, move, ai_color)
+                eval_val = minimax(new_board, depth - 1, alpha, beta, False, ai_color)
+                max_eval = max(max_eval, eval_val)
+                alpha = max(alpha, eval_val)
+                if beta <= alpha: break
+            return max_eval
+        else:
+            min_eval = float('inf')
+            for move in valid_moves:
+                new_board = flip_stones(temp_board, move, 3 - ai_color)
+                eval_val = minimax(new_board, depth - 1, alpha, beta, True, ai_color)
+                min_eval = min(min_eval, eval_val)
+                beta = min(beta, eval_val)
+                if beta <= alpha: break
+            return min_eval
+
+    # メインロジック
+    valid_moves = get_valid_moves(board, color)
+    if not valid_moves: return None
+
+    best_move = None
+    best_value = float('-inf')
+
+    for move in valid_moves:
+        new_board = flip_stones(board, move, color)
+        # 相手の手番としてMinimax開始
+        board_value = minimax(new_board, DEPTH - 1, float('-inf'), float('inf'), False, color)
+        if board_value > best_value:
+            best_value = board_value
+            best_move = move
+
+    return best_move
