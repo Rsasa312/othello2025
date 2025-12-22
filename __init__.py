@@ -4,7 +4,7 @@ EMPTY = 0
 BLACK = 1
 WHITE = 2
 
-def myai2(board, color):
+def myai(board, color):
     opponent = 3 - color
     valid_moves = find_valid_moves(board, color, opponent)
 
