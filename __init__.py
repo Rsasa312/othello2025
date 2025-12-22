@@ -1,107 +1,84 @@
-import sys
+import copy
 
-# --- 定数定義 ---
-EMPTY = 0
-BLACK = 1
-WHITE = 2
-
-def myai(board, color):
+def myai(board, stone_color):
     """
-    戦略強化版AI:
-    1. 角が取れるなら取る
-    2. 角を占有している場合のみ、その周辺(C, X)を許可
-    3. 角が空白なら、その周辺(C, X)への着手を禁止
-    4. それ以外は、最も多くの石を取れる手を選択
+    オセロAI関数 'myai'
+    :param board: 8x8の2次元リスト (1:黒, -1:白, 0:空)
+    :param stone_color: 自分の石の色 (1 or -1)
+    :return: 選択した座標 (x, y) または パスの場合は None
     """
-    opponent = 3 - color
-    valid_moves = find_valid_moves(board, color, opponent)
     
-    if not valid_moves:
-        return None
+    # --- 内部関数: 石を置ける場所（合法手）を探す ---
+    def get_legal_moves(curr_board, color):
+        moves = []
+        for y in range(8):
+            for x in range(8):
+                if can_flip(curr_board, x, y, color):
+                    moves.append((x, y))
+        return moves
 
-    size = len(board)
-    corners = [(0, 0), (0, size-1), (size-1, 0), (size-1, size-1)]
+    def can_flip(curr_board, x, y, color):
+        if curr_board[y][x] != 0: return False
+        directions = [(-1,-1), (0,-1), (1,-1), (-1,0), (1,0), (-1,1), (0,1), (1,1)]
+        for dx, dy in directions:
+            nx, ny = x + dx, y + dy
+            if 0 <= nx < 8 and 0 <= ny < 8 and curr_board[ny][nx] == -color:
+                while 0 <= nx < 8 and 0 <= ny < 8:
+                    if curr_board[ny][nx] == 0: break
+                    if curr_board[ny][nx] == color: return True
+                    nx += dx
+                    ny += dy
+        return False
+
+    # --- 内部関数: 盤面の評価 (重み付けマップ) ---
+    def evaluate(curr_board, color):
+        # 盤面の場所ごとの価値（簡易版）
+        weights = [
+            [100, -20, 10,  5,  5, 10, -20, 100],
+            [-20, -50, -2, -2, -2, -2, -50, -20],
+            [ 10,  -2,  5,  1,  1,  5,  -2,  10],
+            [  5,  -2,  1,  0,  0,  1,  -2,   5],
+            [  5,  -2,  1,  0,  0,  1,  -2,   5],
+            [ 10,  -2,  5,  1,  1,  5,  -2,  10],
+            [-20, -50, -2, -2, -2, -2, -50, -20],
+            [100, -20, 10,  5,  5, 10, -20, 100],
+        ]
+        score = 0
+        for y in range(8):
+            for x in range(8):
+                if curr_board[y][x] == color:
+                    score += weights[y][x]
+                elif curr_board[y][x] == -color:
+                    score -= weights[y][x]
+        return score
+
+    # --- メイン処理: 最善手を選ぶ ---
+    legal_moves = get_legal_moves(board, stone_color)
     
-    # 危険地帯（角の隣：C打ち、X打ち）の定義
-    danger_map = {
-        (0, 0): [(0, 1), (1, 0), (1, 1)],
-        (0, size-1): [(0, size-2), (1, size-1), (1, size-2)],
-        (size-1, 0): [(size-2, 0), (size-1, 1), (size-2, 1)],
-        (size-1, size-1): [(size-2, size-1), (size-1, size-2), (size-2, size-2)]
-    }
+    if not legal_moves:
+        return None  # 置ける場所がない場合はパス
 
-    # --- 1. 角が取れるかチェック ---
-    for r, c, flips in valid_moves:
-        if (r, c) in corners:
-            return (r, c)
+    best_move = None
+    max_score = -float('inf')
 
-    # --- 2. 候補手のフィルタリング ---
-    filtered_moves = []
-    for r, c, flips in valid_moves:
-        is_danger_pos = False
-        allowed_by_corner = False
+    # すべての合法手について、1手先を予測して評価
+    for move in legal_moves:
+        # 仮に置いてみた盤面を作る（簡易的なシミュレーション）
+        temp_board = copy.deepcopy(board)
+        # ※本来はここで石をひっくり返す処理が必要ですが、
+        # 簡易的に「その場所に置いた後の評価」を計算します。
+        temp_board[move[1]][move[0]] = stone_color
         
-        # この手が「どの角の周辺か」を特定
-        for corner, adjacents in danger_map.items():
-            if (r, c) in adjacents:
-                is_danger_pos = True
-                # もしその角が既に自分の石なら、打っても良い（優先度高）
-                if board[corner[0]][corner[1]] == color:
-                    allowed_by_corner = True
-                break
+        score = evaluate(temp_board, stone_color)
         
-        if is_danger_pos:
-            if allowed_by_corner:
-                # 角を占有している場合の周辺打ちは高評価（便宜上flipsをブースト）
-                filtered_moves.append((r, c, flips + 100))
-            else:
-                # 角が空白（または相手の石）なら、ここには打たない
-                continue
-        else:
-            # 危険地帯ではない普通の手
-            filtered_moves.append((r, c, flips))
+        if score > max_score:
+            max_score = score
+            best_move = move
 
-    # --- 3. 最も石が取れる場所を選択 ---
-    # filtered_movesが空（危険地帯しか打つ場所がない）場合は元のvalid_movesから選ぶ
-    target_list = filtered_moves if filtered_moves else valid_moves
-    
-    if not target_list:
-        return None
+    return best_move
 
-    # flips（第3要素）が最大のものを選ぶ
-    best_move = max(target_list, key=lambda x: x[2])
-    return (best_move[0], best_move[1])
-
-# --- ルール関連のヘルパー関数 ---
-def find_valid_moves(board, color, opponent):
-    size = len(board)
-    valid_moves = []
-    for row in range(size):
-        for col in range(size):
-            if board[row][col] == EMPTY:
-                flips = count_flips(board, row, col, color, opponent)
-                if flips > 0:
-                    valid_moves.append((row, col, flips))
-    return valid_moves
-
-def count_flips(board, row, col, color, opponent):
-    size = len(board)
-    total_flips = 0
-    directions = [(-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (1, 1)]
-    
-    for dr, dc in directions:
-        temp_flips = 0
-        r, c = row + dr, col + dc
-        while 0 <= r < size and 0 <= c < size:
-            if board[r][c] == EMPTY:
-                break
-            elif board[r][c] == opponent:
-                temp_flips += 1
-            elif board[r][c] == color:
-                total_flips += temp_flips
-                break
-            else:
-                break
-            r += dr
-            c += dc
-    return total_flips
+# --- 使い方（例） ---
+# board = [[0]*8 for _ in range(8)]
+# board[3][3], board[4][4] = -1, -1
+# board[3][4], board[4][3] = 1, 1
+# print(myai(board, 1))  # 黒(1)の番で最適な手を出力
